@@ -66,12 +66,32 @@ function daysDiff(dateStr) {
   return Math.floor((a - b) / 86400000);
 }
 
+// Días entre cuotas según modalidad
+const STEPS = { DIARIO: 1, SEMANAL: 7, QUINCENAL: 15, MENSUAL: 30 };
+
+// Fecha de vencimiento de la cuota N (base 1)
+// Cuota 1 → fecha + 1 step, cuota 2 → fecha + 2 steps, etc.
+function dueDateForCuota(loan, cuotaNum) {
+  const start = new Date(loan.fecha + 'T00:00:00');
+  const step  = STEPS[loan.modalidad] || 7;
+  start.setDate(start.getDate() + step * cuotaNum);
+  return start.toISOString().slice(0, 10);
+}
+
+// Próxima cuota pendiente de pago
 function nextDueDate(loan) {
   const paidCount = payments.filter(p => String(p.loan_id) === String(loan.id)).length;
-  const start = new Date(loan.fecha + 'T00:00:00');
-  const steps = { DIARIO: 1, SEMANAL: 7, QUINCENAL: 15, MENSUAL: 30 };
-  start.setDate(start.getDate() + (steps[loan.modalidad] || 7) * paidCount);
-  return start.toISOString().slice(0, 10);
+  const next = Math.min(paidCount + 1, Number(loan.cuotas));
+  return dueDateForCuota(loan, next);
+}
+
+// Todas las fechas de cuotas del préstamo (para cronograma)
+function allDueDates(loan) {
+  return Array.from({ length: Number(loan.cuotas) }, (_, i) => ({
+    num:    i + 1,
+    fecha:  dueDateForCuota(loan, i + 1),
+    pagada: i < payments.filter(p => String(p.loan_id) === String(loan.id)).length,
+  }));
 }
 
 function clientById(id)   { return clients.find(c => String(c.id) === String(id)); }
@@ -222,9 +242,10 @@ function renderLoans() {
             <span class="chip">${pct}% pagado</span>
           </div>
           <div class="item-amount">${formatCOP(l.importe)} · cuota ${formatCOP(l.cuota)} × ${l.cuotas}</div>
-          <div style="font-size:13px;color:var(--muted);margin-top:4px">Saldo: ${formatCOP(balance)}</div>
+          <div style="font-size:13px;color:var(--muted);margin-top:4px">Saldo: ${formatCOP(balance)} · Próx. cuota: <strong>${next}</strong></div>
         </div>
         <div class="item-actions">
+          <button class="icon-btn" title="Ver cronograma" onclick="openSchedule(${l.id})">📋</button>
           <button class="icon-btn" title="Registrar pago" onclick="openPaymentForLoan(${l.id})">💳</button>
           <button class="icon-btn" title="Editar" onclick='editLoan(${JSON.stringify(l)})'>✏️</button>
           <button class="icon-btn" title="Eliminar" onclick="deleteLoan(${l.id})">🗑️</button>
@@ -515,11 +536,18 @@ function fillPaymentInfo() {
   if (!loan) { box.innerHTML = ''; return; }
   const balance   = loanBalance(loan);
   const paidCount = payments.filter(p => String(p.loan_id) === String(loan.id)).length;
+  const nextDate = nextDueDate(loan);
+  const diffDays = daysDiff(nextDate);
+  const diffLabel = diffDays === 0 ? '⚠ Hoy' : diffDays < 0 ? `⚠ Hace ${Math.abs(diffDays)} día(s)` : `En ${diffDays} día(s)`;
+  const urgClass  = diffDays <= 0 ? 'danger' : diffDays <= 3 ? 'warn' : 'ok';
   box.innerHTML = `<div class="loan-info-box">
     <div class="info-row"><div class="info-label">Cuota</div><div class="info-value">${formatCOP(loan.cuota)}</div></div>
     <div class="info-row"><div class="info-label">Pagadas</div><div class="info-value">${paidCount} / ${loan.cuotas}</div></div>
     <div class="info-row"><div class="info-label">Saldo</div><div class="info-value">${formatCOP(balance)}</div></div>
-    <div class="info-row"><div class="info-label">Próximo venc.</div><div class="info-value">${nextDueDate(loan)}</div></div>
+    <div class="info-row">
+      <div class="info-label">Próximo venc.</div>
+      <div class="info-value"><strong>${nextDate}</strong> <span class="chip ${urgClass}" style="font-size:11px;padding:2px 6px">${diffLabel}</span></div>
+    </div>
   </div>`;
   // Pre-llenar el monto con la cuota
   const monto = document.getElementById('paymentMonto');
@@ -549,6 +577,33 @@ async function deletePayment(id) {
   if (!confirm('¿Eliminar este pago?')) return;
   if (sb) { await sb.from('pagos').delete().eq('id', id); await loadData(); }
   else { payments = payments.filter(p => p.id !== id); renderAll(); }
+}
+
+// ── CRONOGRAMA DE CUOTAS ─────────────────────────────
+function openSchedule(loanId) {
+  const loan = loans.find(l => String(l.id) === String(loanId));
+  if (!loan) return;
+  const dates   = allDueDates(loan);
+  const client  = clientName(loan.cliente_id);
+  const rows    = dates.map(d => {
+    const diff  = daysDiff(d.fecha);
+    let rowClass = '';
+    let badge   = '';
+    if (d.pagada) { rowClass = 'sched-paid'; badge = '<span class="chip ok" style="font-size:11px">✓ Pagada</span>'; }
+    else if (diff < 0)  { rowClass = 'sched-late'; badge = `<span class="chip danger" style="font-size:11px">Venció hace ${Math.abs(diff)}d</span>`; }
+    else if (diff === 0){ rowClass = 'sched-today'; badge = '<span class="chip warn" style="font-size:11px">⚠ Hoy</span>'; }
+    else if (diff <= 3) { rowClass = 'sched-soon'; badge = `<span class="chip warn" style="font-size:11px">En ${diff}d</span>`; }
+    return `<tr class="${rowClass}">
+      <td>${d.num}</td>
+      <td>${d.fecha}</td>
+      <td>${formatCOP(loan.cuota)}</td>
+      <td>${badge}</td>
+    </tr>`;
+  }).join('');
+
+  document.getElementById('scheduleTitle').textContent = `Cronograma — ${client}`;
+  document.getElementById('scheduleTable').innerHTML = rows;
+  openModal('scheduleModal');
 }
 
 // ── INIT ─────────────────────────────────────────────

@@ -365,3 +365,28 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .loan-desglose strong {
   color: var(--text, #1a1a2e);
 }
+
+/* ── Cronograma de cuotas ── */
+.schedule-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.schedule-table th {
+  background: var(--surface2, #f0f4ff);
+  padding: 8px 12px;
+  text-align: left;
+  font-weight: 600;
+  color: var(--muted, #666);
+  position: sticky;
+  top: 0;
+}
+.schedule-table td {
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border, #eee);
+}
+.schedule-table tr.sched-paid td  { color: var(--muted, #aaa); text-decoration: line-through; }
+.schedule-table tr.sched-late td  { background: #fff3f3; }
+.schedule-table tr.sched-today td { background: #fffbea; font-weight: 600; }
+.schedule-table tr.sched-soon td  { background: #fffbea; }
+.schedule-table tr:last-child td  { border-bottom: none; }

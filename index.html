@@ -166,5 +166,20 @@
 </div>
 
 <script src="app.js"></script>
+  <!-- ── MODAL CRONOGRAMA ── -->
+  <div id="scheduleModal" class="modal">
+    <div class="modal-box">
+      <div class="modal-head">
+        <span id="scheduleTitle">Cronograma de cuotas</span>
+        <button class="close-btn" onclick="closeModal('scheduleModal')">✕</button>
+      </div>
+      <div class="modal-body" style="padding:0 0 12px">
+        <table class="schedule-table">
+          <thead><tr><th>#</th><th>Fecha</th><th>Cuota</th><th>Estado</th></tr></thead>
+          <tbody id="scheduleTable"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
 </body>
 </html>
