@@ -52,8 +52,8 @@ function initMoneyInputs() {
 //   257.142 → 260.000
 //   251.582 → 255.000
 //   240.000 → 240.000  (exacto, no cambia)
-function redondear5000(valor) {
-  return Math.ceil(valor / 5000) * 5000;
+function redondear1000(valor) {
+  return Math.ceil(valor / 1000) * 1000;
 }
 
 // ── UTILIDADES ───────────────────────────────────────
@@ -349,6 +349,12 @@ function openLoanModal(loan) {
   document.getElementById('loanInteres').value   = loan?.interes ?? '';
   document.getElementById('loanModalidad').value = loan?.modalidad || 'SEMANAL';
   document.getElementById('loanCuotas').value    = loan?.cuotas || '';
+  // Resetear modo manual al abrir
+  const toggle = document.getElementById('toggleManual');
+  toggle.checked = false;
+  const totalField = document.getElementById('loanImporteTotal');
+  totalField.setAttribute('readonly', true);
+  totalField.classList.add('readonly-field');
   calcLoan(loan);
   openModal('loanModal');
 }
@@ -369,19 +375,39 @@ function calcMeses(cuotas, modalidad) {
   return Math.ceil(cuotas / cpm);
 }
 
+function onToggleManual() {
+  const manual = document.getElementById('toggleManual').checked;
+  const field  = document.getElementById('loanImporteTotal');
+  if (manual) {
+    field.removeAttribute('readonly');
+    field.classList.remove('readonly-field');
+    field.focus();
+    field.select();
+  } else {
+    field.setAttribute('readonly', true);
+    field.classList.add('readonly-field');
+    calcLoan();  // recalcular con interés
+  }
+}
+
 function calcLoan(loan) {
   const importe   = parseCOP(document.getElementById('loanImporte').value) || loan?.importe || 0;
   const interes   = Number(document.getElementById('loanInteres').value ?? loan?.interes ?? 0);
   const cuotas    = Number(document.getElementById('loanCuotas').value || loan?.cuotas || 0);
   const modalidad = document.getElementById('loanModalidad').value || loan?.modalidad || 'SEMANAL';
+  const modoManual = document.getElementById('toggleManual')?.checked;
 
-  // Interés mensual simple: se aplica una vez por mes completo
+  // Si está en modo manual, el total lo puso el usuario — solo recalcular cuota
   const meses = cuotas > 0 ? calcMeses(cuotas, modalidad) : 0;
-  const total  = importe + importe * (interes / 100) * meses;
-  const cuota  = cuotas > 0 ? redondear5000(total / cuotas) : 0;
-
-  document.getElementById('loanImporteTotal').value = total > 0 ? total.toLocaleString('es-CO') : '';
-  document.getElementById('loanCuota').value        = cuota > 0 ? cuota.toLocaleString('es-CO') : '';
+  let total;
+  if (modoManual) {
+    total = parseCOP(document.getElementById('loanImporteTotal').value) || 0;
+  } else {
+    total = importe + importe * (interes / 100) * meses;
+    document.getElementById('loanImporteTotal').value = total > 0 ? total.toLocaleString('es-CO') : '';
+  }
+  const cuota = cuotas > 0 ? redondear1000(total / cuotas) : 0;
+  document.getElementById('loanCuota').value = cuota > 0 ? cuota.toLocaleString('es-CO') : '';
 
   // Mostrar desglose al usuario
   const desglose = document.getElementById('loanDesglose');
@@ -402,9 +428,12 @@ async function saveLoan(e) {
   const interes      = Number(document.getElementById('loanInteres').value);
   const cuotas       = Number(document.getElementById('loanCuotas').value);
   const modalidad    = document.getElementById('loanModalidad').value;
+  const modoManual   = document.getElementById('toggleManual')?.checked;
   const meses        = cuotas > 0 ? calcMeses(cuotas, modalidad) : 0;
-  const importeTotal = importe + importe * (interes / 100) * meses;
-  const cuota        = cuotas > 0 ? redondear5000(importeTotal / cuotas) : 0;
+  const importeTotal = modoManual
+    ? parseCOP(document.getElementById('loanImporteTotal').value)
+    : importe + importe * (interes / 100) * meses;
+  const cuota        = cuotas > 0 ? redondear1000(importeTotal / cuotas) : 0;
 
   const payload = {
     fecha:         document.getElementById('loanFecha').value,
