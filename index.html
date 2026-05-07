@@ -107,7 +107,8 @@
       </div>
       <div class="row2">
         <div class="form-group"><label>Importe total</label><input id="loanImporteTotal" class="readonly-field" type="text" readonly/></div>
-        <div class="form-group"><label>Cuota</label><input id="loanCuota" class="readonly-field" type="text" readonly/><p class="hint">Redondeada al millar.</p></div>
+        <div class="form-group"><label>Cuota</label><input id="loanCuota" class="readonly-field" type="text" readonly/><p class="hint">Redondeada al múltiplo de $5.000.</p></div>
+        <div id="loanDesglose" class="loan-desglose" style="display:none"></div>
       </div>
       <div class="form-actions">
         <button type="button" class="btn btn-cancel" onclick="closeModal('loanModal')">Cancelar</button>

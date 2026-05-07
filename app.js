@@ -24,7 +24,7 @@ function formatCOP(value) {
 }
 
 function parseCOP(str) {
-  return Number(String(str).replace(/\./g, '').replace(',', '').replace('$', '').trim()) || 0;
+  return Number(String(str).replace(/\./g, '').replace(',', '').replace('$', '').replace(/\s/g, '')) || 0;
 }
 
 // Formatea mientras el usuario escribe: 1000000 → 1.000.000
@@ -43,6 +43,17 @@ function initMoneyInputs() {
       input.value = raw > 0 ? raw : '';
     });
   });
+}
+
+
+
+// ── REDONDEO AL MÚLTIPLO DE 5.000 HACIA ARRIBA ───────
+// Ejemplos:
+//   257.142 → 260.000
+//   251.582 → 255.000
+//   240.000 → 240.000  (exacto, no cambia)
+function redondear5000(valor) {
+  return Math.ceil(valor / 5000) * 5000;
 }
 
 // ── UTILIDADES ───────────────────────────────────────
@@ -323,14 +334,44 @@ function openLoanModal(loan) {
 
 function editLoan(loan) { openLoanModal(loan); }
 
+// ── CUOTAS POR MES SEGÚN MODALIDAD ───────────────────
+// DIARIO: ~30 cuotas = 1 mes
+// SEMANAL: ~4 cuotas = 1 mes
+// QUINCENAL: 2 cuotas = 1 mes
+// MENSUAL: 1 cuota = 1 mes
+const CUOTAS_POR_MES = { DIARIO: 30, SEMANAL: 4, QUINCENAL: 2, MENSUAL: 1 };
+
+// Calcula cuántos períodos de interés (meses) corresponden a N cuotas
+// según la modalidad. Ej: QUINCENAL 7 cuotas → ceil(7/2) = 4 meses
+function calcMeses(cuotas, modalidad) {
+  const cpm = CUOTAS_POR_MES[modalidad] || 1;
+  return Math.ceil(cuotas / cpm);
+}
+
 function calcLoan(loan) {
   const importe   = parseCOP(document.getElementById('loanImporte').value) || loan?.importe || 0;
   const interes   = Number(document.getElementById('loanInteres').value ?? loan?.interes ?? 0);
   const cuotas    = Number(document.getElementById('loanCuotas').value || loan?.cuotas || 0);
-  const total     = importe + importe * interes / 100;
-  const cuota = cuotas > 0 ? Math.ceil((total / cuotas) / 1000) * 1000 : 0;
+  const modalidad = document.getElementById('loanModalidad').value || loan?.modalidad || 'SEMANAL';
+
+  // Interés mensual simple: se aplica una vez por mes completo
+  const meses = cuotas > 0 ? calcMeses(cuotas, modalidad) : 0;
+  const total  = importe + importe * (interes / 100) * meses;
+  const cuota  = cuotas > 0 ? redondear5000(total / cuotas) : 0;
+
   document.getElementById('loanImporteTotal').value = total > 0 ? total.toLocaleString('es-CO') : '';
   document.getElementById('loanCuota').value        = cuota > 0 ? cuota.toLocaleString('es-CO') : '';
+
+  // Mostrar desglose al usuario
+  const desglose = document.getElementById('loanDesglose');
+  if (desglose && importe > 0 && cuotas > 0) {
+    const interesTotal = importe * (interes / 100) * meses;
+    desglose.innerHTML = `<span>📅 ${meses} mes${meses !== 1 ? 'es' : ''} de interés (${cuotas} cuotas ${modalidad.toLowerCase()})</span>
+      <span>Interés total: <strong>${formatCOP(interesTotal)}</strong></span>`;
+    desglose.style.display = 'flex';
+  } else if (desglose) {
+    desglose.style.display = 'none';
+  }
 }
 
 async function saveLoan(e) {
@@ -339,14 +380,16 @@ async function saveLoan(e) {
   const importe      = parseCOP(document.getElementById('loanImporte').value);
   const interes      = Number(document.getElementById('loanInteres').value);
   const cuotas       = Number(document.getElementById('loanCuotas').value);
-  const importeTotal = importe + importe * interes / 100;
-  const cuota = Math.ceil((importeTotal / cuotas) / 1000) * 1000;
+  const modalidad    = document.getElementById('loanModalidad').value;
+  const meses        = cuotas > 0 ? calcMeses(cuotas, modalidad) : 0;
+  const importeTotal = importe + importe * (interes / 100) * meses;
+  const cuota        = cuotas > 0 ? redondear5000(importeTotal / cuotas) : 0;
 
   const payload = {
     fecha:         document.getElementById('loanFecha').value,
     cliente_id:    Number(document.getElementById('loanCliente').value),
     importe, interes, cuotas, importe_total: importeTotal, cuota,
-    modalidad:     document.getElementById('loanModalidad').value,
+    modalidad,
   };
 
   if (sb) {
