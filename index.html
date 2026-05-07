@@ -114,7 +114,7 @@
               Editar manualmente
             </label>
           </div>
-          <input id="loanImporteTotal" class="readonly-field money-input" type="text" inputmode="numeric" readonly placeholder="Se calcula automático"/>
+          <input id="loanImporteTotal" class="readonly-field money-input" type="text" inputmode="numeric" readonly placeholder="Se calcula automático" oninput="if(document.getElementById('toggleManual').checked) calcLoan()"/>
         </div>
         <div class="form-group"><label>Cuota</label><input id="loanCuota" class="readonly-field" type="text" readonly/><p class="hint">Redondeada al múltiplo de $1.000.</p></div>
         <div id="loanDesglose" class="loan-desglose" style="display:none"></div>

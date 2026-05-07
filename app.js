@@ -381,12 +381,20 @@ function onToggleManual() {
   if (manual) {
     field.removeAttribute('readonly');
     field.classList.remove('readonly-field');
+    // Quitar los listeners de money-input para no interferir al escribir
+    field.oninput  = null;
+    field.onblur   = null;
+    field.onfocus  = null;
+    // Limpiar el valor para que el usuario escriba desde cero
+    const raw = parseCOP(field.value);
+    field.value = raw > 0 ? raw : '';
     field.focus();
     field.select();
   } else {
     field.setAttribute('readonly', true);
     field.classList.add('readonly-field');
-    calcLoan();  // recalcular con interés
+    field.oninput = null;
+    calcLoan();  // recalcular con interés automático
   }
 }
 
