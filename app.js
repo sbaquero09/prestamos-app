@@ -3,8 +3,8 @@
 // =====================================================
 
 // ── CONFIG SUPABASE ─────────────────────────────────
-const SUPABASE_URL      = 'TU_SUPABASE_URL';
-const SUPABASE_ANON_KEY = 'TU_SUPABASE_ANON_KEY';
+const SUPABASE_URL = 'https://xxvzfajudcqdwehfhkjn.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inh4dnpmYWp1ZGNxZHdlaGZoa2puIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgxNzAwMDgsImV4cCI6MjA5Mzc0NjAwOH0.CfTzLor2xiSdVGvwv9M6DGelXpUYsi_kyhfYs2n-n9w';
 const useSupabase = SUPABASE_URL !== 'TU_SUPABASE_URL';
 const sb = useSupabase ? supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
 
@@ -328,7 +328,7 @@ function calcLoan(loan) {
   const interes   = Number(document.getElementById('loanInteres').value ?? loan?.interes ?? 0);
   const cuotas    = Number(document.getElementById('loanCuotas').value || loan?.cuotas || 0);
   const total     = importe + importe * interes / 100;
-  const cuota     = cuotas > 0 ? Math.round((total / cuotas) / 1000) * 1000 : 0;
+  const cuota = cuotas > 0 ? Math.ceil((total / cuotas) / 1000) * 1000 : 0;
   document.getElementById('loanImporteTotal').value = total > 0 ? total.toLocaleString('es-CO') : '';
   document.getElementById('loanCuota').value        = cuota > 0 ? cuota.toLocaleString('es-CO') : '';
 }
@@ -340,7 +340,7 @@ async function saveLoan(e) {
   const interes      = Number(document.getElementById('loanInteres').value);
   const cuotas       = Number(document.getElementById('loanCuotas').value);
   const importeTotal = importe + importe * interes / 100;
-  const cuota        = Math.round((importeTotal / cuotas) / 1000) * 1000;
+  const cuota = Math.ceil((importeTotal / cuotas) / 1000) * 1000;
 
   const payload = {
     fecha:         document.getElementById('loanFecha').value,
