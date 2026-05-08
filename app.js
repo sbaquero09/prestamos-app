@@ -1,40 +1,34 @@
 // =====================================================
-// PRESTAMOS PRO — app.js
+// PRESTAMOS PRO — app.js (con Auth multiusuario)
 // =====================================================
 
-// ── CONFIG SUPABASE ─────────────────────────────────
-const SUPABASE_URL = 'https://xxvzfajudcqdwehfhkjn.supabase.co';
+// ── CONFIG SUPABASE ────────────────────────────────
+const SUPABASE_URL     = 'https://xxvzfajudcqdwehfhkjn.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inh4dnpmYWp1ZGNxZHdlaGZoa2puIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgxNzAwMDgsImV4cCI6MjA5Mzc0NjAwOH0.CfTzLor2xiSdVGvwv9M6DGelXpUYsi_kyhfYs2n-n9w';
-const useSupabase = SUPABASE_URL !== 'TU_SUPABASE_URL';
-const sb = useSupabase ? supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-// ── STATE ────────────────────────────────────────────
-let currentTab = 'finanzas';
-let clients    = [];
-let loans      = [];
-let payments   = [];
-let config     = { capital_inicial: 2000000 };
+// ── STATE ──────────────────────────────────────────
+let currentTab  = 'finanzas';
+let currentUser = null;
+let clients     = [];
+let loans       = [];
+let payments    = [];
+let config      = { capital_inicial: 2000000 };
 
-// ── FORMATEO PESOS COLOMBIANOS ────────────────────────
+// ── FORMATEO PESOS COLOMBIANOS ──────────────────────
 function formatCOP(value) {
   const num = Number(String(value).replace(/\./g, '').replace(',', '.')) || 0;
   return new Intl.NumberFormat('es-CO', {
     style: 'currency', currency: 'COP', maximumFractionDigits: 0
   }).format(num);
 }
-
 function parseCOP(str) {
-  return Number(String(str).replace(/\./g, '').replace(',', '').replace('$', '').replace(/\s/g, '')) || 0;
+  return Number(String(str).replace(/\./g,'').replace(',','').replace('$','').replace(/\s/g,'')) || 0;
 }
-
-// Formatea mientras el usuario escribe: 1000000 → 1.000.000
 function formatInput(input) {
   const raw = parseCOP(input.value);
-  if (raw > 0) input.value = raw.toLocaleString('es-CO');
-  else input.value = '';
+  input.value = raw > 0 ? raw.toLocaleString('es-CO') : '';
 }
-
-// Aplica formateo a todos los campos money-input al cargar
 function initMoneyInputs() {
   document.querySelectorAll('.money-input').forEach(input => {
     input.addEventListener('blur',  () => formatInput(input));
@@ -45,47 +39,32 @@ function initMoneyInputs() {
   });
 }
 
+// ── REDONDEO ────────────────────────────────────────
+function redondear1000(valor) { return Math.ceil(valor / 1000) * 1000; }
 
-
-// ── REDONDEO AL MÚLTIPLO DE 5.000 HACIA ARRIBA ───────
-// Ejemplos:
-//   257.142 → 260.000
-//   251.582 → 255.000
-//   240.000 → 240.000  (exacto, no cambia)
-function redondear1000(valor) {
-  return Math.ceil(valor / 1000) * 1000;
-}
-
-// ── UTILIDADES ───────────────────────────────────────
-function today() { return new Date().toISOString().slice(0, 10); }
-function norm(s) { return String(s || '').toLowerCase(); }
-
+// ── UTILIDADES ──────────────────────────────────────
+function today()     { return new Date().toISOString().slice(0, 10); }
+function norm(s)     { return String(s || '').toLowerCase(); }
 function daysDiff(dateStr) {
   const a = new Date(dateStr + 'T00:00:00');
-  const b = new Date(today() + 'T00:00:00');
+  const b = new Date(today()  + 'T00:00:00');
   return Math.floor((a - b) / 86400000);
 }
 
-// Días entre cuotas según modalidad
-const STEPS = { DIARIO: 1, SEMANAL: 7, QUINCENAL: 15, MENSUAL: 30 };
+const STEPS          = { DIARIO: 1, SEMANAL: 7, QUINCENAL: 15, MENSUAL: 30 };
+const CUOTAS_POR_MES = { DIARIO: 30, SEMANAL: 4, QUINCENAL: 2, MENSUAL: 1 };
 
-// Fecha de vencimiento de la cuota N (base 1)
-// Cuota 1 → fecha + 1 step, cuota 2 → fecha + 2 steps, etc.
 function dueDateForCuota(loan, cuotaNum) {
   const start = new Date(loan.fecha + 'T00:00:00');
   const step  = STEPS[loan.modalidad] || 7;
   start.setDate(start.getDate() + step * cuotaNum);
   return start.toISOString().slice(0, 10);
 }
-
-// Próxima cuota pendiente de pago
 function nextDueDate(loan) {
   const paidCount = payments.filter(p => String(p.loan_id) === String(loan.id)).length;
-  const next = Math.min(paidCount + 1, Number(loan.cuotas));
+  const next      = Math.min(paidCount + 1, Number(loan.cuotas));
   return dueDateForCuota(loan, next);
 }
-
-// Todas las fechas de cuotas del préstamo (para cronograma)
 function allDueDates(loan) {
   return Array.from({ length: Number(loan.cuotas) }, (_, i) => ({
     num:    i + 1,
@@ -93,13 +72,19 @@ function allDueDates(loan) {
     pagada: i < payments.filter(p => String(p.loan_id) === String(loan.id)).length,
   }));
 }
-
+function calcMeses(cuotas, modalidad) {
+  const cpm = CUOTAS_POR_MES[modalidad] || 1;
+  return Math.ceil(cuotas / cpm);
+}
 function clientById(id)   { return clients.find(c => String(c.id) === String(id)); }
 function clientName(id)   { return clientById(id)?.nombre || 'Sin cliente'; }
 function loanExpected(l)  { return Number(l.cuota || 0) * Number(l.cuotas || 0); }
-function loanPaid(loanId) { return payments.filter(p => String(p.loan_id) === String(loanId)).reduce((s, p) => s + Number(p.monto || 0), 0); }
+function loanPaid(loanId) {
+  return payments
+    .filter(p => String(p.loan_id) === String(loanId))
+    .reduce((s, p) => s + Number(p.monto || 0), 0);
+}
 function loanBalance(l)   { return Math.max(0, loanExpected(l) - loanPaid(l.id)); }
-
 function loansDueSoon() {
   return loans.filter(l => {
     if (loanBalance(l) <= 0) return false;
@@ -108,67 +93,184 @@ function loansDueSoon() {
   });
 }
 
-// ── NAVEGACIÓN ───────────────────────────────────────
+// ── TOAST ──────────────────────────────────────────
+function showToast(msg, tipo = 'ok') {
+  let t = document.getElementById('appToast');
+  if (!t) {
+    t = document.createElement('div');
+    t.id = 'appToast';
+    t.style.cssText = `
+      position:fixed;bottom:110px;left:50%;transform:translateX(-50%);
+      padding:12px 20px;border-radius:12px;font-size:14px;font-weight:700;
+      z-index:9999;opacity:0;transition:opacity .3s;pointer-events:none;
+      max-width:320px;text-align:center;
+    `;
+    document.body.appendChild(t);
+  }
+  t.textContent = msg;
+  t.style.background = tipo === 'ok' ? 'var(--ok)'  : tipo === 'warn' ? 'var(--warn)' : 'var(--danger)';
+  t.style.color = '#fff';
+  t.style.opacity = '1';
+  clearTimeout(t._to);
+  t._to = setTimeout(() => { t.style.opacity = '0'; }, 2800);
+}
+
+// ══════════════════════════════════════════════════════
+// AUTH
+// ══════════════════════════════════════════════════════
+function showAuthScreen() {
+  document.getElementById('authScreen').style.display = 'flex';
+  document.getElementById('appShell').style.display   = 'none';
+}
+function showAppShell(user) {
+  currentUser = user;
+  document.getElementById('authScreen').style.display = 'none';
+  document.getElementById('appShell').style.display   = 'block';
+  goTab('finanzas');
+  initMoneyInputs();
+  loadData();
+}
+function switchAuthTab(tab) {
+  document.getElementById('formLogin').style.display    = tab === 'login'    ? 'block' : 'none';
+  document.getElementById('formRegister').style.display = tab === 'register' ? 'block' : 'none';
+  document.getElementById('tabLogin').classList.toggle('active',    tab === 'login');
+  document.getElementById('tabRegister').classList.toggle('active', tab === 'register');
+  clearAuthErrors();
+}
+function clearAuthErrors() {
+  ['loginError', 'regError'].forEach(id => {
+    const el = document.getElementById(id);
+    el.style.display = 'none';
+    el.textContent   = '';
+  });
+}
+function showAuthError(id, msg) {
+  const el = document.getElementById(id);
+  el.textContent   = msg;
+  el.style.display = 'block';
+}
+function setAuthLoading(btnId, loading) {
+  const btn    = document.getElementById(btnId);
+  btn.disabled = loading;
+  btn.textContent = loading ? 'Cargando…'
+    : (btnId === 'loginBtn' ? 'Entrar' : 'Crear cuenta');
+}
+
+async function handleLogin(e) {
+  e.preventDefault();
+  clearAuthErrors();
+  setAuthLoading('loginBtn', true);
+  const email    = document.getElementById('loginEmail').value.trim();
+  const password = document.getElementById('loginPassword').value;
+  const { data, error } = await sb.auth.signInWithPassword({ email, password });
+  setAuthLoading('loginBtn', false);
+  if (error) { showAuthError('loginError', translateAuthError(error.message)); return; }
+  showAppShell(data.user);
+}
+
+async function handleRegister(e) {
+  e.preventDefault();
+  clearAuthErrors();
+  const pass1 = document.getElementById('regPassword').value;
+  const pass2 = document.getElementById('regPassword2').value;
+  if (pass1 !== pass2) { showAuthError('regError', 'Las contraseñas no coinciden.'); return; }
+  setAuthLoading('regBtn', true);
+  const email = document.getElementById('regEmail').value.trim();
+  const { data, error } = await sb.auth.signUp({ email, password: pass1 });
+  setAuthLoading('regBtn', false);
+  if (error) { showAuthError('regError', translateAuthError(error.message)); return; }
+  if (data.user && !data.session) {
+    showAuthError('regError', '✅ Cuenta creada. Revisa tu correo para confirmar antes de iniciar sesión.');
+    return;
+  }
+  showAppShell(data.user);
+}
+
+async function handleForgotPassword() {
+  const email = document.getElementById('loginEmail').value.trim();
+  if (!email) { showAuthError('loginError', 'Escribe tu correo primero.'); return; }
+  const { error } = await sb.auth.resetPasswordForEmail(email, { redirectTo: window.location.href });
+  if (error) { showAuthError('loginError', translateAuthError(error.message)); return; }
+  showAuthError('loginError', '✅ Te enviamos un enlace para restablecer tu contraseña.');
+  document.getElementById('loginError').style.color = 'var(--ok)';
+}
+
+async function handleLogout() {
+  await sb.auth.signOut();
+  currentUser = null;
+  clients = []; loans = []; payments = [];
+  config = { capital_inicial: 2000000 };
+  closeModal('profileModal');
+  showAuthScreen();
+}
+
+function openProfile() {
+  document.getElementById('profileEmail').textContent = currentUser?.email || '—';
+  openModal('profileModal');
+}
+
+function translateAuthError(msg) {
+  if (msg.includes('Invalid login credentials'))  return 'Correo o contraseña incorrectos.';
+  if (msg.includes('Email not confirmed'))         return 'Debes confirmar tu correo antes de entrar.';
+  if (msg.includes('User already registered'))     return 'Ya existe una cuenta con ese correo.';
+  if (msg.includes('Password should be'))          return 'La contraseña debe tener al menos 6 caracteres.';
+  if (msg.includes('rate limit'))                  return 'Demasiados intentos. Espera un momento.';
+  return msg;
+}
+
+// ── NAVEGACIÓN ─────────────────────────────────────
 function goTab(tab) {
   currentTab = tab;
   document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
   document.getElementById('screen-' + tab).classList.add('active');
-  document.querySelectorAll('.nav-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
+  document.querySelectorAll('.nav-btn').forEach(b =>
+    b.classList.toggle('active', b.dataset.tab === tab)
+  );
   document.getElementById('fab').style.display = tab === 'finanzas' ? 'none' : 'flex';
 }
-
 function primaryAction() {
   if (currentTab === 'prestamos') openLoanModal();
-  else if (currentTab === 'pagos')     openPaymentModal();
-  else if (currentTab === 'clientes')  openClientModal();
+  else if (currentTab === 'pagos')    openPaymentModal();
+  else if (currentTab === 'clientes') openClientModal();
 }
-
 function openModal(id)  { document.getElementById(id).classList.add('open'); }
 function closeModal(id) { document.getElementById(id).classList.remove('open'); }
-
-// cerrar modal tocando fondo
 document.querySelectorAll('.modal').forEach(m =>
   m.addEventListener('click', e => { if (e.target === m) m.classList.remove('open'); })
 );
 
-// ── CARGA DE DATOS ───────────────────────────────────
+// ── CARGA DE DATOS ─────────────────────────────────
 async function loadData() {
-  if (!sb) {
-    config   = { capital_inicial: Number(localStorage.getItem('capital_inicial') || 2000000) };
-    clients  = [
-      { id:1, nombre:'José Fernando Mecánico', identificacion:'12345678', telefono:'3001112233', email:'', direccion:'Cali' },
-      { id:2, nombre:'David Mecánico',          identificacion:'87654321', telefono:'3109998877', email:'', direccion:'Cali' },
-      { id:3, nombre:'Natalia Lozano Rebolledo', identificacion:'11223344', telefono:'3152223344', email:'', direccion:'Cali' },
-    ];
-    loans = [
-      { id:11, fecha:'2026-05-01', cliente_id:1, importe:2000000, interes:20, modalidad:'SEMANAL',   cuotas:10, importe_total:2400000, cuota:240000 },
-      { id:12, fecha:'2026-05-03', cliente_id:2, importe:800000,  interes:15, modalidad:'QUINCENAL', cuotas:4,  importe_total:920000,  cuota:230000 },
-      { id:13, fecha:'2026-05-05', cliente_id:3, importe:1200000, interes:18, modalidad:'DIARIO',    cuotas:12, importe_total:1416000, cuota:118000 },
-    ];
-    payments = [
-      { id:1, loan_id:11, fecha:'2026-05-08', monto:240000 },
-      { id:2, loan_id:11, fecha:'2026-05-15', monto:240000 },
-      { id:3, loan_id:12, fecha:'2026-05-18', monto:230000 },
-    ];
-    renderAll();
+  if (!currentUser) return;
+  const uid = currentUser.id;
+
+  const [
+    { data: cfg, error: e1 },
+    { data: c,   error: e2 },
+    { data: l,   error: e3 },
+    { data: p,   error: e4 },
+  ] = await Promise.all([
+    sb.from('app_config').select('*').eq('user_id', uid).limit(1),
+    sb.from('clientes').select('*').eq('user_id', uid).order('nombre'),
+    sb.from('prestamos').select('*').eq('user_id', uid).order('fecha', { ascending: false }),
+    sb.from('pagos').select('*').eq('user_id', uid).order('fecha', { ascending: false }),
+  ]);
+
+  const errores = [e1, e2, e3, e4].filter(Boolean);
+  if (errores.length) {
+    console.error('Error cargando datos:', errores.map(e => e.message));
+    showToast('Error al cargar datos. Revisa la conexión.', 'danger');
     return;
   }
 
-  const [{ data: cfg }, { data: c }, { data: l }, { data: p }] = await Promise.all([
-    sb.from('app_config').select('*').limit(1),
-    sb.from('clientes').select('*').order('nombre'),
-    sb.from('prestamos').select('*').order('fecha', { ascending: false }),
-    sb.from('pagos').select('*').order('fecha', { ascending: false }),
-  ]);
-
-  config   = { capital_inicial: Number(cfg?.[0]?.capital_inicial || 2000000) };
+  config   = { capital_inicial: Number(cfg?.[0]?.capital_inicial ?? 2000000) };
   clients  = c || [];
   loans    = l || [];
   payments = p || [];
   renderAll();
 }
 
-// ── RENDER ───────────────────────────────────────────
+// ── RENDER ─────────────────────────────────────────
 function renderAll() {
   renderHeader();
   renderStats();
@@ -209,15 +311,19 @@ function renderStats() {
 
   const due = loansDueSoon();
   document.getElementById('dueAlert').innerHTML = due.length
-    ? `<div class="alert-warn"><strong>⚠ Cobros próximos</strong><p>${due.length} préstamo(s) con cuota en los próximos 3 días.</p></div>`
+    ? `<div class="alert-warn"><strong>Cobros próximos</strong><p>${due.length} préstamo(s) con cuota en los próximos 3 días.</p></div>`
     : '';
 }
 
 function renderLoans() {
-  const q = norm(document.getElementById('searchLoans').value);
+  const q    = norm(document.getElementById('searchLoans').value);
   const list = loans.filter(l => norm(clientName(l.cliente_id)).includes(q));
   const wrap = document.getElementById('loanList');
-  if (!list.length) { wrap.innerHTML = '<div class="empty">No hay préstamos.</div>'; return; }
+
+  if (!list.length) {
+    wrap.innerHTML = '<div class="empty">No hay préstamos.</div>';
+    return;
+  }
 
   wrap.innerHTML = list.map(l => {
     const next    = nextDueDate(l);
@@ -226,12 +332,16 @@ function renderLoans() {
     const paid    = loanPaid(l.id);
     const total   = loanExpected(l);
     const pct     = total > 0 ? Math.min(100, Math.round(paid / total * 100)) : 0;
+
     let statusChip = `<span class="chip ok">Al día</span>`;
-    if (balance <= 0) statusChip = `<span class="chip">Completado</span>`;
-    else if (diff < 0) statusChip = `<span class="chip danger">Vencido</span>`;
+    if (balance <= 0)   statusChip = `<span class="chip">Completado</span>`;
+    else if (diff < 0)  statusChip = `<span class="chip danger">Vencido</span>`;
     else if (diff <= 3) statusChip = `<span class="chip warn">Vence ${next}</span>`;
+
     const modClass = l.modalidad?.toLowerCase() || 'semanal';
-    return `<div class="list-item">
+
+    return `
+    <div class="list-item">
       <div class="list-top">
         <div style="flex:1;min-width:0">
           <div class="item-title">${clientName(l.cliente_id)}</div>
@@ -242,13 +352,15 @@ function renderLoans() {
             <span class="chip">${pct}% pagado</span>
           </div>
           <div class="item-amount">${formatCOP(l.importe)} · cuota ${formatCOP(l.cuota)} × ${l.cuotas}</div>
-          <div style="font-size:13px;color:var(--muted);margin-top:4px">Saldo: ${formatCOP(balance)} · Próx. cuota: <strong>${next}</strong></div>
+          <div style="font-size:13px;color:var(--muted);margin-top:4px">
+            Saldo ${formatCOP(balance)} · Próx. cuota <strong>${next}</strong>
+          </div>
         </div>
         <div class="item-actions">
-          <button class="icon-btn" title="Ver cronograma" onclick="openSchedule(${l.id})">📋</button>
-          <button class="icon-btn" title="Registrar pago" onclick="openPaymentForLoan(${l.id})">💳</button>
-          <button class="icon-btn" title="Editar" onclick='editLoan(${JSON.stringify(l)})'>✏️</button>
-          <button class="icon-btn" title="Eliminar" onclick="deleteLoan(${l.id})">🗑️</button>
+          <button class="icon-btn" title="Ver cronograma" onclick="openSchedule(${l.id})">📅</button>
+          <button class="icon-btn" title="Registrar pago"  onclick="openPaymentForLoan(${l.id})">💰</button>
+          <button class="icon-btn" title="Editar"          onclick="editLoan(${JSON.stringify(l).replace(/"/g,'&quot;')})">✏️</button>
+          <button class="icon-btn" title="Eliminar"        onclick="deleteLoan(${l.id})">🗑️</button>
         </div>
       </div>
     </div>`;
@@ -256,30 +368,37 @@ function renderLoans() {
 }
 
 function renderPayments() {
-  const due = loansDueSoon();
+  const due  = loansDueSoon();
   document.getElementById('paymentsAlert').innerHTML = due.length
-    ? `<div class="alert-info">📅 ${due.length} préstamo(s) con pago próximo a vencer. Registra el pago aquí.</div>`
+    ? `<div class="alert-info">${due.length} préstamo(s) con pago próximo a vencer.</div>`
     : '';
 
   const q    = norm(document.getElementById('searchPayments').value);
   const list = payments.filter(p => {
     const loan = loans.find(l => String(l.id) === String(p.loan_id));
-    return !loan || norm(clientName(loan.cliente_id)).includes(q) || norm(p.fecha).includes(q);
+    return !loan
+      ? false
+      : norm(clientName(loan.cliente_id)).includes(q) || norm(p.fecha).includes(q);
   });
+
   const wrap = document.getElementById('paymentList');
-  if (!list.length) { wrap.innerHTML = '<div class="empty">No hay pagos registrados.</div>'; return; }
+  if (!list.length) {
+    wrap.innerHTML = '<div class="empty">No hay pagos registrados.</div>';
+    return;
+  }
 
   wrap.innerHTML = list.map(p => {
     const loan = loans.find(l => String(l.id) === String(p.loan_id));
     const name = loan ? clientName(loan.cliente_id) : 'Préstamo eliminado';
-    return `<div class="list-item">
+    return `
+    <div class="list-item">
       <div class="list-top">
         <div>
           <div class="item-title">${name}</div>
           <div class="item-meta">${p.fecha}</div>
           <div class="chips"><span class="chip ok">✓ Pago registrado</span></div>
-          <div class="item-amount">${formatCOP(p.monto)}</div>
         </div>
+        <div class="item-amount">${formatCOP(p.monto)}</div>
         <div class="item-actions">
           <button class="icon-btn" title="Eliminar" onclick="deletePayment(${p.id})">🗑️</button>
         </div>
@@ -290,13 +409,22 @@ function renderPayments() {
 
 function renderClients() {
   const q    = norm(document.getElementById('searchClients').value);
-  const list = clients.filter(c => norm(c.nombre).includes(q) || norm(c.identificacion).includes(q) || norm(c.telefono).includes(q));
+  const list = clients.filter(c =>
+    norm(c.nombre).includes(q) ||
+    norm(c.identificacion).includes(q) ||
+    norm(c.telefono).includes(q)
+  );
   const wrap = document.getElementById('clientList');
-  if (!list.length) { wrap.innerHTML = '<div class="empty">No hay clientes.</div>'; return; }
+
+  if (!list.length) {
+    wrap.innerHTML = '<div class="empty">No hay clientes.</div>';
+    return;
+  }
 
   wrap.innerHTML = list.map(c => {
     const n = loans.filter(l => String(l.cliente_id) === String(c.id)).length;
-    return `<div class="list-item">
+    return `
+    <div class="list-item">
       <div class="list-top">
         <div>
           <div class="item-title">${c.nombre}</div>
@@ -305,7 +433,7 @@ function renderClients() {
           ${c.email ? `<div style="font-size:13px;color:var(--muted);margin-top:6px">${c.email}</div>` : ''}
         </div>
         <div class="item-actions">
-          <button class="icon-btn" onclick='editClient(${JSON.stringify(c)})'>✏️</button>
+          <button class="icon-btn" onclick="editClient(${JSON.stringify(c).replace(/"/g,'&quot;')})">✏️</button>
           <button class="icon-btn" onclick="deleteClient(${c.id})">🗑️</button>
         </div>
       </div>
@@ -313,7 +441,7 @@ function renderClients() {
   }).join('');
 }
 
-// ── SETTINGS ─────────────────────────────────────────
+// ── SETTINGS ────────────────────────────────────────
 function openSettings() {
   const v = Number(config.capital_inicial || 0);
   document.getElementById('cfgCapital').value = v > 0 ? v.toLocaleString('es-CO') : '';
@@ -322,58 +450,60 @@ function openSettings() {
 
 async function saveSettings() {
   const val = parseCOP(document.getElementById('cfgCapital').value);
-  config.capital_inicial = val;
-  localStorage.setItem('capital_inicial', val);
-  if (sb) {
-    const { data } = await sb.from('app_config').select('id').limit(1);
-    if (data?.length) await sb.from('app_config').update({ capital_inicial: val }).eq('id', data[0].id);
-    else await sb.from('app_config').insert({ capital_inicial: val });
+  const uid = currentUser.id;
+
+  const { data, error: selectErr } = await sb
+    .from('app_config').select('id').eq('user_id', uid).limit(1);
+
+  if (selectErr) { showToast('Error al guardar configuración.', 'danger'); return; }
+
+  let err;
+  if (data?.length) {
+    ({ error: err } = await sb.from('app_config')
+      .update({ capital_inicial: val }).eq('id', data[0].id));
+  } else {
+    ({ error: err } = await sb.from('app_config')
+      .insert({ capital_inicial: val, user_id: uid }));
   }
+
+  if (err) { showToast('Error al guardar: ' + err.message, 'danger'); return; }
+
+  config.capital_inicial = val;
   closeModal('settingsModal');
   renderHeader();
   renderStats();
+  showToast('Capital actualizado ✓');
 }
 
-// ── PRÉSTAMOS ────────────────────────────────────────
+// ══════════════════════════════════════════════════════
+// PRÉSTAMOS
+// ══════════════════════════════════════════════════════
 function openLoanModal(loan) {
   document.getElementById('loanModalTitle').textContent = loan ? 'Editar préstamo' : 'Nuevo préstamo';
-  document.getElementById('loanId').value = loan?.id || '';
+  document.getElementById('loanId').value    = loan?.id    || '';
   document.getElementById('loanFecha').value = loan?.fecha || today();
 
   const sel = document.getElementById('loanCliente');
-  sel.innerHTML = '<option value="">Seleccionar cliente…</option>' +
+  sel.innerHTML = '<option value="">Seleccionar cliente</option>' +
     clients.map(c => `<option value="${c.id}">${c.nombre}</option>`).join('');
   if (loan?.cliente_id) sel.value = loan.cliente_id;
 
-  document.getElementById('loanImporte').value   = loan?.importe ? Number(loan.importe).toLocaleString('es-CO') : '';
-  document.getElementById('loanInteres').value   = loan?.interes ?? '';
-  document.getElementById('loanModalidad').value = loan?.modalidad || 'SEMANAL';
-  document.getElementById('loanCuotas').value    = loan?.cuotas || '';
-  // Resetear modo manual al abrir
+  document.getElementById('loanImporte').value  = loan?.importe  ? Number(loan.importe).toLocaleString('es-CO') : '';
+  document.getElementById('loanInteres').value  = loan?.interes  ?? '';
+  document.getElementById('loanModalidad').value= loan?.modalidad || 'SEMANAL';
+  document.getElementById('loanCuotas').value   = loan?.cuotas   || '';
+
   const toggle = document.getElementById('toggleManual');
   toggle.checked = false;
   const totalField = document.getElementById('loanImporteTotal');
   totalField.setAttribute('readonly', true);
   totalField.classList.add('readonly-field');
+
   calcLoan(loan);
   openModal('loanModal');
 }
 
 function editLoan(loan) { openLoanModal(loan); }
-
-// ── CUOTAS POR MES SEGÚN MODALIDAD ───────────────────
-// DIARIO: ~30 cuotas = 1 mes
-// SEMANAL: ~4 cuotas = 1 mes
-// QUINCENAL: 2 cuotas = 1 mes
-// MENSUAL: 1 cuota = 1 mes
-const CUOTAS_POR_MES = { DIARIO: 30, SEMANAL: 4, QUINCENAL: 2, MENSUAL: 1 };
-
-// Calcula cuántos períodos de interés (meses) corresponden a N cuotas
-// según la modalidad. Ej: QUINCENAL 7 cuotas → ceil(7/2) = 4 meses
-function calcMeses(cuotas, modalidad) {
-  const cpm = CUOTAS_POR_MES[modalidad] || 1;
-  return Math.ceil(cuotas / cpm);
-}
 
 function onToggleManual() {
   const manual = document.getElementById('toggleManual').checked;
@@ -381,165 +511,155 @@ function onToggleManual() {
   if (manual) {
     field.removeAttribute('readonly');
     field.classList.remove('readonly-field');
-    // Quitar los listeners de money-input para no interferir al escribir
-    field.oninput  = null;
-    field.onblur   = null;
-    field.onfocus  = null;
-    // Limpiar el valor para que el usuario escriba desde cero
+    field.oninput = null; field.onblur = null; field.onfocus = null;
     const raw = parseCOP(field.value);
     field.value = raw > 0 ? raw : '';
-    field.focus();
-    field.select();
+    field.focus(); field.select();
   } else {
     field.setAttribute('readonly', true);
     field.classList.add('readonly-field');
-    field.oninput = null;
-    calcLoan();  // recalcular con interés automático
+    calcLoan();
   }
 }
 
 function calcLoan(loan) {
-  const importe   = parseCOP(document.getElementById('loanImporte').value) || loan?.importe || 0;
-  const interes   = Number(document.getElementById('loanInteres').value ?? loan?.interes ?? 0);
-  const cuotas    = Number(document.getElementById('loanCuotas').value || loan?.cuotas || 0);
-  const modalidad = document.getElementById('loanModalidad').value || loan?.modalidad || 'SEMANAL';
+  const importe  = parseCOP(document.getElementById('loanImporte').value)  || loan?.importe  || 0;
+  const interes  = Number(document.getElementById('loanInteres').value)     ?? loan?.interes  ?? 0;
+  const cuotas   = Number(document.getElementById('loanCuotas').value)      || loan?.cuotas   || 0;
+  const modalidad= document.getElementById('loanModalidad').value           || loan?.modalidad || 'SEMANAL';
   const modoManual = document.getElementById('toggleManual')?.checked;
+  const meses    = cuotas > 0 ? calcMeses(cuotas, modalidad) : 0;
 
-  // Si está en modo manual, el total lo puso el usuario — solo recalcular cuota
-  const meses = cuotas > 0 ? calcMeses(cuotas, modalidad) : 0;
   let total;
   if (modoManual) {
     total = parseCOP(document.getElementById('loanImporteTotal').value) || 0;
   } else {
-    total = importe + importe * (interes / 100) * meses;
+    total = importe + (importe * interes / 100 * meses);
     document.getElementById('loanImporteTotal').value = total > 0 ? total.toLocaleString('es-CO') : '';
   }
+
   const cuota = cuotas > 0 ? redondear1000(total / cuotas) : 0;
   document.getElementById('loanCuota').value = cuota > 0 ? cuota.toLocaleString('es-CO') : '';
 
-  // Mostrar desglose al usuario
   const desglose = document.getElementById('loanDesglose');
-  if (desglose && importe > 0 && cuotas > 0) {
-    const interesTotal = importe * (interes / 100) * meses;
-    desglose.innerHTML = `<span>📅 ${meses} mes${meses !== 1 ? 'es' : ''} de interés (${cuotas} cuotas ${modalidad.toLowerCase()})</span>
-      <span>Interés total: <strong>${formatCOP(interesTotal)}</strong></span>`;
-    desglose.style.display = 'flex';
-  } else if (desglose) {
-    desglose.style.display = 'none';
+  if (desglose) {
+    if (importe > 0 && cuotas > 0) {
+      const interesTotal = importe * interes / 100 * meses;
+      desglose.innerHTML = `
+        <span>${meses} mes${meses !== 1 ? 'es' : ''} de interés · ${cuotas} cuotas · ${modalidad.toLowerCase()}</span>
+        <span>Interés total <strong>${formatCOP(interesTotal)}</strong></span>`;
+      desglose.style.display = 'flex';
+    } else {
+      desglose.style.display = 'none';
+    }
   }
 }
 
 async function saveLoan(e) {
   e.preventDefault();
-  const id = document.getElementById('loanId').value;
-  const importe      = parseCOP(document.getElementById('loanImporte').value);
-  const interes      = Number(document.getElementById('loanInteres').value);
-  const cuotas       = Number(document.getElementById('loanCuotas').value);
-  const modalidad    = document.getElementById('loanModalidad').value;
-  const modoManual   = document.getElementById('toggleManual')?.checked;
-  const meses        = cuotas > 0 ? calcMeses(cuotas, modalidad) : 0;
+  const id        = document.getElementById('loanId').value;
+  const importe   = parseCOP(document.getElementById('loanImporte').value);
+  const interes   = Number(document.getElementById('loanInteres').value);
+  const cuotas    = Number(document.getElementById('loanCuotas').value);
+  const modalidad = document.getElementById('loanModalidad').value;
+  const modoManual= document.getElementById('toggleManual')?.checked;
+  const meses     = cuotas > 0 ? calcMeses(cuotas, modalidad) : 0;
   const importeTotal = modoManual
     ? parseCOP(document.getElementById('loanImporteTotal').value)
-    : importe + importe * (interes / 100) * meses;
-  const cuota        = cuotas > 0 ? redondear1000(importeTotal / cuotas) : 0;
+    : importe + (importe * interes / 100 * meses);
+  const cuota     = cuotas > 0 ? redondear1000(importeTotal / cuotas) : 0;
 
   const payload = {
     fecha:         document.getElementById('loanFecha').value,
     cliente_id:    Number(document.getElementById('loanCliente').value),
-    importe, interes, cuotas, importe_total: importeTotal, cuota,
+    importe,
+    interes,
+    cuotas,
+    importe_total: importeTotal,
+    cuota,
     modalidad,
+    user_id:       currentUser.id,   // ← OBLIGATORIO con RLS
   };
 
-  if (sb) {
-    if (id) await sb.from('prestamos').update(payload).eq('id', id);
-    else    await sb.from('prestamos').insert(payload);
-    await loadData();
-  } else {
-    if (id) loans = loans.map(l => String(l.id) === id ? { ...l, ...payload } : l);
-    else    loans.unshift({ ...payload, id: Date.now() });
-    renderAll();
-  }
+  const { error } = id
+    ? await sb.from('prestamos').update(payload).eq('id', id)
+    : await sb.from('prestamos').insert(payload);
+
+  if (error) { showToast('Error al guardar préstamo: ' + error.message, 'danger'); return; }
+
+  await loadData();
   closeModal('loanModal');
+  showToast(id ? 'Préstamo actualizado ✓' : 'Préstamo creado ✓');
 }
 
 async function deleteLoan(id) {
   if (!confirm('¿Eliminar este préstamo y sus pagos?')) return;
-  if (sb) {
-    await sb.from('pagos').delete().eq('loan_id', id);
-    await sb.from('prestamos').delete().eq('id', id);
-    await loadData();
-  } else {
-    loans    = loans.filter(l => l.id !== id);
-    payments = payments.filter(p => p.loan_id !== id);
-    renderAll();
-  }
+  await sb.from('pagos').delete().eq('loan_id', id);
+  const { error } = await sb.from('prestamos').delete().eq('id', id);
+  if (error) { showToast('Error al eliminar.', 'danger'); return; }
+  await loadData();
+  showToast('Préstamo eliminado.', 'warn');
 }
 
-// Crear cliente rápido desde modal de préstamo
 function openQuickClient() {
-  document.getElementById('clientFromLoan').value = '1';
+  document.getElementById('clientFromLoan').value = 1;
   openClientModal();
 }
+function openPaymentForLoan(loanId) { openPaymentModal(loanId); }
 
-// Abrir pago preseleccionando préstamo
-function openPaymentForLoan(loanId) {
-  openPaymentModal(loanId);
-}
-
-// ── CLIENTES ─────────────────────────────────────────
+// ══════════════════════════════════════════════════════
+// CLIENTES
+// ══════════════════════════════════════════════════════
 function openClientModal(client) {
   document.getElementById('clientModalTitle').textContent = client ? 'Editar cliente' : 'Nuevo cliente';
-  document.getElementById('clientId').value           = client?.id || '';
-  document.getElementById('clientNombre').value        = client?.nombre || '';
-  document.getElementById('clientIdentificacion').value = client?.identificacion || '';
-  document.getElementById('clientTelefono').value      = client?.telefono || '';
-  document.getElementById('clientEmail').value         = client?.email || '';
-  document.getElementById('clientDireccion').value     = client?.direccion || '';
-  if (!client) document.getElementById('clientFromLoan').value = '0';
+  document.getElementById('clientId').value           = client?.id           || '';
+  document.getElementById('clientNombre').value       = client?.nombre       || '';
+  document.getElementById('clientIdentificacion').value= client?.identificacion || '';
+  document.getElementById('clientTelefono').value     = client?.telefono     || '';
+  document.getElementById('clientEmail').value        = client?.email        || '';
+  document.getElementById('clientDireccion').value    = client?.direccion    || '';
+  if (!client) document.getElementById('clientFromLoan').value = 0;
   openModal('clientModal');
 }
+
 function editClient(c) { openClientModal(c); }
 
 async function saveClient(e) {
   e.preventDefault();
-  const id      = document.getElementById('clientId').value;
+  const id       = document.getElementById('clientId').value;
   const fromLoan = document.getElementById('clientFromLoan').value === '1';
+
   const payload = {
-    nombre:         document.getElementById('clientNombre').value,
-    identificacion: document.getElementById('clientIdentificacion').value,
-    telefono:       document.getElementById('clientTelefono').value,
-    email:          document.getElementById('clientEmail').value,
-    direccion:      document.getElementById('clientDireccion').value,
+    nombre:          document.getElementById('clientNombre').value.trim(),
+    identificacion:  document.getElementById('clientIdentificacion').value.trim(),
+    telefono:        document.getElementById('clientTelefono').value.trim(),
+    email:           document.getElementById('clientEmail').value.trim(),
+    direccion:       document.getElementById('clientDireccion').value.trim(),
+    user_id:         currentUser.id,   // ← OBLIGATORIO con RLS
   };
 
   let newId = id;
-
-  if (sb) {
-    if (id) { await sb.from('clientes').update(payload).eq('id', id); }
-    else {
-      const { data } = await sb.from('clientes').insert(payload).select();
-      newId = data?.[0]?.id;
-    }
-    await loadData();
+  let err;
+  if (id) {
+    ({ error: err } = await sb.from('clientes').update(payload).eq('id', id));
+    newId = id;
   } else {
-    if (id) {
-      clients = clients.map(c => String(c.id) === id ? { ...c, ...payload } : c);
-      newId = id;
-    } else {
-      newId = Date.now();
-      clients.unshift({ ...payload, id: newId });
-    }
-    renderAll();
+    const { data, error } = await sb.from('clientes').insert(payload).select();
+    err   = error;
+    newId = data?.[0]?.id;
   }
 
-  closeModal('clientModal');
+  if (err) { showToast('Error al guardar cliente: ' + err.message, 'danger'); return; }
 
-  // Si se creó desde préstamo, re-abrir el modal de préstamo con el cliente seleccionado
+  await loadData();
+  closeModal('clientModal');
+  showToast(id ? 'Cliente actualizado ✓' : 'Cliente creado ✓');
+
   if (fromLoan && newId) {
     openLoanModal();
     setTimeout(() => {
       const sel = document.getElementById('loanCliente');
-      sel.innerHTML = '<option value="">Seleccionar cliente…</option>' +
+      sel.innerHTML = '<option value="">Seleccionar cliente</option>' +
         clients.map(c => `<option value="${c.id}">${c.nombre}</option>`).join('');
       sel.value = String(newId);
     }, 100);
@@ -548,18 +668,25 @@ async function saveClient(e) {
 
 async function deleteClient(id) {
   if (loans.some(l => String(l.cliente_id) === String(id))) {
-    alert('No puedes eliminar un cliente con préstamos activos.'); return;
+    alert('No puedes eliminar un cliente con préstamos activos.');
+    return;
   }
   if (!confirm('¿Eliminar este cliente?')) return;
-  if (sb) { await sb.from('clientes').delete().eq('id', id); await loadData(); }
-  else { clients = clients.filter(c => c.id !== id); renderAll(); }
+  const { error } = await sb.from('clientes').delete().eq('id', id);
+  if (error) { showToast('Error al eliminar.', 'danger'); return; }
+  await loadData();
+  showToast('Cliente eliminado.', 'warn');
 }
 
-// ── PAGOS ────────────────────────────────────────────
+// ══════════════════════════════════════════════════════
+// PAGOS
+// ══════════════════════════════════════════════════════
 function openPaymentModal(preselectedLoanId) {
   document.getElementById('paymentId').value = '';
   const sel = document.getElementById('paymentLoanId');
-  sel.innerHTML = loans.map(l => `<option value="${l.id}">${clientName(l.cliente_id)} · ${formatCOP(l.cuota)}×${l.cuotas}</option>`).join('');
+  sel.innerHTML = loans.map(l =>
+    `<option value="${l.id}">${clientName(l.cliente_id)} — ${formatCOP(l.cuota)} × ${l.cuotas}</option>`
+  ).join('');
   if (preselectedLoanId) sel.value = String(preselectedLoanId);
   document.getElementById('paymentFecha').value = today();
   fillPaymentInfo();
@@ -571,79 +698,89 @@ function fillPaymentInfo() {
   const loan   = loans.find(l => String(l.id) === String(loanId));
   const box    = document.getElementById('loanInfoBox');
   if (!loan) { box.innerHTML = ''; return; }
+
   const balance   = loanBalance(loan);
   const paidCount = payments.filter(p => String(p.loan_id) === String(loan.id)).length;
-  const nextDate = nextDueDate(loan);
-  const diffDays = daysDiff(nextDate);
-  const diffLabel = diffDays === 0 ? '⚠ Hoy' : diffDays < 0 ? `⚠ Hace ${Math.abs(diffDays)} día(s)` : `En ${diffDays} día(s)`;
-  const urgClass  = diffDays <= 0 ? 'danger' : diffDays <= 3 ? 'warn' : 'ok';
-  box.innerHTML = `<div class="loan-info-box">
-    <div class="info-row"><div class="info-label">Cuota</div><div class="info-value">${formatCOP(loan.cuota)}</div></div>
-    <div class="info-row"><div class="info-label">Pagadas</div><div class="info-value">${paidCount} / ${loan.cuotas}</div></div>
-    <div class="info-row"><div class="info-label">Saldo</div><div class="info-value">${formatCOP(balance)}</div></div>
-    <div class="info-row">
-      <div class="info-label">Próximo venc.</div>
-      <div class="info-value"><strong>${nextDate}</strong> <span class="chip ${urgClass}" style="font-size:11px;padding:2px 6px">${diffLabel}</span></div>
-    </div>
-  </div>`;
-  // Pre-llenar el monto con la cuota
+  const nextDate  = nextDueDate(loan);
+  const diffDays  = daysDiff(nextDate);
+  const diffLabel = diffDays === 0 ? 'Hoy' : diffDays < 0 ? `Hace ${Math.abs(diffDays)} días` : `En ${diffDays} días`;
+  const urgClass  = diffDays < 0 ? 'danger' : diffDays <= 3 ? 'warn' : 'ok';
+
+  box.innerHTML = `
+    <div class="loan-info-box">
+      <div class="info-row"><div class="info-label">Cuota</div><div class="info-value">${formatCOP(loan.cuota)}</div></div>
+      <div class="info-row"><div class="info-label">Pagadas</div><div class="info-value">${paidCount} / ${loan.cuotas}</div></div>
+      <div class="info-row"><div class="info-label">Saldo</div><div class="info-value">${formatCOP(balance)}</div></div>
+      <div class="info-row">
+        <div class="info-label">Próximo venc.</div>
+        <div class="info-value"><strong>${nextDate}</strong>
+          <span class="chip ${urgClass}" style="font-size:11px;padding:2px 6px">${diffLabel}</span>
+        </div>
+      </div>
+    </div>`;
+
   const monto = document.getElementById('paymentMonto');
   if (!monto.value) monto.value = Number(loan.cuota).toLocaleString('es-CO');
 }
 
 async function savePayment(e) {
   e.preventDefault();
-  const id      = document.getElementById('paymentId').value;
+  const id  = document.getElementById('paymentId').value;
   const payload = {
     loan_id: Number(document.getElementById('paymentLoanId').value),
     fecha:   document.getElementById('paymentFecha').value,
     monto:   parseCOP(document.getElementById('paymentMonto').value),
+    user_id: currentUser.id,   // ← OBLIGATORIO con RLS
   };
-  if (sb) {
-    if (id) await sb.from('pagos').update(payload).eq('id', id);
-    else    await sb.from('pagos').insert(payload);
-    await loadData();
-  } else {
-    payments.unshift({ ...payload, id: Date.now() });
-    renderAll();
-  }
+
+  const { error } = id
+    ? await sb.from('pagos').update(payload).eq('id', id)
+    : await sb.from('pagos').insert(payload);
+
+  if (error) { showToast('Error al guardar pago: ' + error.message, 'danger'); return; }
+
+  await loadData();
   closeModal('paymentModal');
+  showToast(id ? 'Pago actualizado ✓' : 'Pago registrado ✓');
 }
 
 async function deletePayment(id) {
   if (!confirm('¿Eliminar este pago?')) return;
-  if (sb) { await sb.from('pagos').delete().eq('id', id); await loadData(); }
-  else { payments = payments.filter(p => p.id !== id); renderAll(); }
+  const { error } = await sb.from('pagos').delete().eq('id', id);
+  if (error) { showToast('Error al eliminar.', 'danger'); return; }
+  await loadData();
+  showToast('Pago eliminado.', 'warn');
 }
 
-// ── CRONOGRAMA DE CUOTAS ─────────────────────────────
+// ── CRONOGRAMA ──────────────────────────────────────
 function openSchedule(loanId) {
-  const loan = loans.find(l => String(l.id) === String(loanId));
+  const loan   = loans.find(l => String(l.id) === String(loanId));
   if (!loan) return;
-  const dates   = allDueDates(loan);
-  const client  = clientName(loan.cliente_id);
-  const rows    = dates.map(d => {
-    const diff  = daysDiff(d.fecha);
-    let rowClass = '';
-    let badge   = '';
-    if (d.pagada) { rowClass = 'sched-paid'; badge = '<span class="chip ok" style="font-size:11px">✓ Pagada</span>'; }
-    else if (diff < 0)  { rowClass = 'sched-late'; badge = `<span class="chip danger" style="font-size:11px">Venció hace ${Math.abs(diff)}d</span>`; }
-    else if (diff === 0){ rowClass = 'sched-today'; badge = '<span class="chip warn" style="font-size:11px">⚠ Hoy</span>'; }
-    else if (diff <= 3) { rowClass = 'sched-soon'; badge = `<span class="chip warn" style="font-size:11px">En ${diff}d</span>`; }
-    return `<tr class="${rowClass}">
-      <td>${d.num}</td>
-      <td>${d.fecha}</td>
-      <td>${formatCOP(loan.cuota)}</td>
-      <td>${badge}</td>
-    </tr>`;
+  const dates  = allDueDates(loan);
+  const client = clientName(loan.cliente_id);
+
+  const rows = dates.map(d => {
+    const diff = daysDiff(d.fecha);
+    let rowClass = '', badge = '';
+    if (d.pagada)        { rowClass = 'sched-paid';  badge = `<span class="chip ok"  style="font-size:11px">Pagada</span>`; }
+    else if (diff < 0)   { rowClass = 'sched-late';  badge = `<span class="chip danger" style="font-size:11px">Venció hace ${Math.abs(diff)}d</span>`; }
+    else if (diff === 0) { rowClass = 'sched-today'; badge = `<span class="chip warn" style="font-size:11px">Hoy</span>`; }
+    else if (diff <= 3)  { rowClass = 'sched-soon';  badge = `<span class="chip warn" style="font-size:11px">En ${diff}d</span>`; }
+    return `<tr class="${rowClass}"><td>${d.num}</td><td>${d.fecha}</td><td>${formatCOP(loan.cuota)}</td><td>${badge}</td></tr>`;
   }).join('');
 
   document.getElementById('scheduleTitle').textContent = `Cronograma — ${client}`;
-  document.getElementById('scheduleTable').innerHTML = rows;
+  document.getElementById('scheduleTable').innerHTML   = rows;
   openModal('scheduleModal');
 }
 
-// ── INIT ─────────────────────────────────────────────
-goTab('finanzas');
-initMoneyInputs();
-loadData();
+// ── INIT ────────────────────────────────────────────
+(async () => {
+  const { data: { session } } = await sb.auth.getSession();
+  if (session?.user) showAppShell(session.user);
+  else               showAuthScreen();
+
+  sb.auth.onAuthStateChange((event, session) => {
+    if (!session) { currentUser = null; showAuthScreen(); }
+  });
+})();

@@ -1,77 +1,205 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-<meta charset="UTF-8"/>
-<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"/>
-<title>Prestamos Pro</title>
-<meta name="theme-color" content="#0f766e"/>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
-<link rel="stylesheet" href="style.css"/>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>Préstamos Pro</title>
+  <link rel="stylesheet" href="style.css">
 </head>
 <body>
+
+<!-- ══════════════════════════════════════════════════
+     AUTH SCREEN
+══════════════════════════════════════════════════ -->
+<div id="authScreen" style="display:none;min-height:100dvh;background:var(--brand);align-items:center;justify-content:center;padding:24px;">
+  <div style="width:100%;max-width:380px;background:#fff;border-radius:24px;padding:28px 24px;box-shadow:0 24px 64px rgba(15,118,110,.35);">
+
+    <div style="text-align:center;margin-bottom:24px;">
+      <div style="font-size:36px;margin-bottom:6px;">💸</div>
+      <h1 style="font-size:22px;font-weight:800;color:var(--brand-dark);letter-spacing:-.03em;">Préstamos Pro</h1>
+      <p style="font-size:14px;color:var(--muted);margin-top:4px;">Gestión inteligente de préstamos</p>
+    </div>
+
+    <!-- Tabs -->
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:20px;">
+      <button id="tabLogin"    class="auth-tab active" onclick="switchAuthTab('login')">Iniciar sesión</button>
+      <button id="tabRegister" class="auth-tab"        onclick="switchAuthTab('register')">Registrarse</button>
+    </div>
+
+    <!-- Login -->
+    <form id="formLogin" onsubmit="handleLogin(event)">
+      <div class="form-group">
+        <label for="loginEmail">Correo electrónico</label>
+        <input id="loginEmail" type="email" placeholder="tu@correo.com" required autocomplete="email">
+      </div>
+      <div class="form-group">
+        <label for="loginPassword">Contraseña</label>
+        <input id="loginPassword" type="password" placeholder="••••••••" required autocomplete="current-password">
+      </div>
+      <div id="loginError" class="auth-error" style="display:none;"></div>
+      <button id="loginBtn" type="submit" class="btn btn-primary" style="width:100%;margin-top:4px;">Entrar</button>
+      <button type="button" onclick="handleForgotPassword()"
+        style="width:100%;margin-top:10px;background:none;border:none;color:var(--muted);font-size:13px;cursor:pointer;text-decoration:underline;">
+        Olvidé mi contraseña
+      </button>
+    </form>
+
+    <!-- Registro -->
+    <form id="formRegister" style="display:none;" onsubmit="handleRegister(event)">
+      <div class="form-group">
+        <label for="regEmail">Correo electrónico</label>
+        <input id="regEmail" type="email" placeholder="tu@correo.com" required autocomplete="email">
+      </div>
+      <div class="form-group">
+        <label for="regPassword">Contraseña</label>
+        <input id="regPassword" type="password" placeholder="Mínimo 6 caracteres" required autocomplete="new-password">
+      </div>
+      <div class="form-group">
+        <label for="regPassword2">Confirmar contraseña</label>
+        <input id="regPassword2" type="password" placeholder="Repite la contraseña" required autocomplete="new-password">
+      </div>
+      <div id="regError" class="auth-error" style="display:none;"></div>
+      <button id="regBtn" type="submit" class="btn btn-primary" style="width:100%;margin-top:4px;">Crear cuenta</button>
+    </form>
+
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════
+     APP SHELL
+══════════════════════════════════════════════════ -->
+<div id="appShell" style="display:none;">
 <div class="app">
+
+  <!-- TOP BAR -->
   <header class="topbar">
     <div class="topbar-row">
-      <div class="brand"><div class="brand-badge">💵</div>Prestamos Pro</div>
+      <div class="brand">
+        <div class="brand-badge">💸</div>
+        Préstamos Pro
+      </div>
       <div class="top-actions">
-        <button class="ghost-btn" onclick="openSettings()">⚙️</button>
-        <button class="ghost-btn" onclick="loadData()">↻</button>
+        <button class="ghost-btn" title="Perfil" onclick="openProfile()">👤</button>
+        <button class="ghost-btn" title="Configuración" onclick="openSettings()">⚙️</button>
       </div>
     </div>
     <div class="hero-row">
       <div class="hero-card">
         <div class="hero-label">Capital disponible</div>
-        <div id="heroCapital" class="hero-value">$0</div>
+        <div class="hero-value" id="heroCapital">$0</div>
       </div>
       <div class="hero-card">
         <div class="hero-label">Cobros próximos</div>
-        <div id="heroDue" class="hero-value hero-warn">0</div>
+        <div class="hero-value hero-warn" id="heroDue">0</div>
       </div>
     </div>
   </header>
 
+  <!-- CONTENT -->
   <main class="content">
+
+    <!-- ── Finanzas ── -->
     <section id="screen-finanzas" class="screen active">
+      <h2 class="sec-title">Resumen financiero</h2>
       <div id="dueAlert"></div>
-      <p class="sec-title">Panel financiero</p>
       <div class="stats-grid" id="statsGrid"></div>
     </section>
 
+    <!-- ── Préstamos ── -->
     <section id="screen-prestamos" class="screen">
-      <div class="toolbar"><div class="search-box"><span>🔍</span><input id="searchLoans" placeholder="Buscar préstamo…" oninput="renderLoans()"/></div></div>
+      <h2 class="sec-title">Préstamos</h2>
+      <div class="toolbar">
+        <div class="search-box">
+          <span>🔍</span>
+          <input id="searchLoans" type="search" placeholder="Buscar por cliente…"
+            oninput="renderLoans()">
+        </div>
+      </div>
       <div id="loanList"></div>
     </section>
 
+    <!-- ── Pagos ── -->
     <section id="screen-pagos" class="screen">
+      <h2 class="sec-title">Pagos</h2>
       <div id="paymentsAlert"></div>
-      <div class="toolbar"><div class="search-box"><span>🔍</span><input id="searchPayments" placeholder="Buscar pago o cliente…" oninput="renderPayments()"/></div></div>
+      <div class="toolbar">
+        <div class="search-box">
+          <span>🔍</span>
+          <input id="searchPayments" type="search" placeholder="Buscar por cliente o fecha…"
+            oninput="renderPayments()">
+        </div>
+      </div>
       <div id="paymentList"></div>
     </section>
 
+    <!-- ── Clientes ── -->
     <section id="screen-clientes" class="screen">
-      <div class="toolbar"><div class="search-box"><span>🔍</span><input id="searchClients" placeholder="Buscar cliente…" oninput="renderClients()"/></div></div>
+      <h2 class="sec-title">Clientes</h2>
+      <div class="toolbar">
+        <div class="search-box">
+          <span>🔍</span>
+          <input id="searchClients" type="search" placeholder="Buscar por nombre, cédula o teléfono…"
+            oninput="renderClients()">
+        </div>
+      </div>
       <div id="clientList"></div>
     </section>
+
   </main>
 
-  <button id="fab" class="fab" onclick="primaryAction()"><span>+</span></button>
+  <!-- FAB -->
+  <button class="fab" id="fab" style="display:none;" onclick="primaryAction()">+</button>
 
+  <!-- BOTTOM NAV -->
   <nav class="bottom-nav">
-    <button class="nav-btn" data-tab="pagos"     onclick="goTab('pagos')">   <span class="nav-ico">💳</span>PAGOS</button>
-    <button class="nav-btn" data-tab="prestamos" onclick="goTab('prestamos')"><span class="nav-ico">💰</span>PRÉSTAMOS</button>
-    <button class="nav-btn active" data-tab="finanzas"  onclick="goTab('finanzas')"> <span class="nav-ico">📊</span>FINANZAS</button>
-    <button class="nav-btn" data-tab="clientes"  onclick="goTab('clientes')"> <span class="nav-ico">👤</span>CLIENTES</button>
+    <button class="nav-btn active" data-tab="finanzas"  onclick="goTab('finanzas')">
+      <span class="nav-ico">📊</span>Finanzas
+    </button>
+    <button class="nav-btn" data-tab="prestamos" onclick="goTab('prestamos')">
+      <span class="nav-ico">💳</span>Préstamos
+    </button>
+    <button class="nav-btn" data-tab="pagos"     onclick="goTab('pagos')">
+      <span class="nav-ico">💰</span>Pagos
+    </button>
+    <button class="nav-btn" data-tab="clientes"  onclick="goTab('clientes')">
+      <span class="nav-ico">👥</span>Clientes
+    </button>
   </nav>
+
+</div><!-- /.app -->
+</div><!-- /#appShell -->
+
+<!-- ══════════════════════════════════════════════════
+     MODALES
+══════════════════════════════════════════════════ -->
+
+<!-- Perfil -->
+<div id="profileModal" class="modal">
+  <div class="sheet">
+    <div class="sheet-handle"></div>
+    <div class="sheet-head">
+      <span class="sheet-title">Mi perfil</span>
+      <button class="close-btn" onclick="closeModal('profileModal')">✕</button>
+    </div>
+    <p style="font-size:15px;color:var(--muted);margin-bottom:20px;">
+      Sesión activa como:<br>
+      <strong id="profileEmail" style="color:var(--text);">—</strong>
+    </p>
+    <button class="btn btn-cancel" style="width:100%;" onclick="handleLogout()">🚪 Cerrar sesión</button>
+  </div>
 </div>
 
-<!-- MODAL CONFIGURACIÓN -->
+<!-- Configuración -->
 <div id="settingsModal" class="modal">
   <div class="sheet">
     <div class="sheet-handle"></div>
-    <div class="sheet-head"><div class="sheet-title">Configuración</div><button class="close-btn" onclick="closeModal('settingsModal')">✕</button></div>
+    <div class="sheet-head">
+      <span class="sheet-title">Configuración</span>
+      <button class="close-btn" onclick="closeModal('settingsModal')">✕</button>
+    </div>
     <div class="form-group">
-      <label>Capital inicial</label>
-      <input id="cfgCapital" class="money-input" type="text" inputmode="numeric" placeholder="2.000.000"/>
+      <label for="cfgCapital">Capital inicial (COP)</label>
+      <input id="cfgCapital" class="money-input" type="text" inputmode="numeric" placeholder="2.000.000">
       <p class="hint">Edita tu capital base. Se refleja en el panel de finanzas.</p>
     </div>
     <div class="form-actions">
@@ -81,43 +209,68 @@
   </div>
 </div>
 
-<!-- MODAL PRÉSTAMO -->
+<!-- Nuevo / Editar Préstamo -->
 <div id="loanModal" class="modal">
   <div class="sheet">
     <div class="sheet-handle"></div>
-    <div class="sheet-head"><div id="loanModalTitle" class="sheet-title">Nuevo préstamo</div><button class="close-btn" onclick="closeModal('loanModal')">✕</button></div>
+    <div class="sheet-head">
+      <span class="sheet-title" id="loanModalTitle">Nuevo préstamo</span>
+      <button class="close-btn" onclick="closeModal('loanModal')">✕</button>
+    </div>
     <form onsubmit="saveLoan(event)">
-      <input id="loanId" type="hidden"/>
+      <input type="hidden" id="loanId">
       <div class="form-group">
-        <label>Fecha</label>
-        <input id="loanFecha" type="date" required/>
+        <label for="loanFecha">Fecha</label>
+        <input id="loanFecha" type="date" required>
       </div>
       <div class="form-group">
-        <label>Cliente</label>
-        <select id="loanCliente" required></select>
-        <button type="button" class="inline-btn" onclick="openQuickClient()">＋ Crear nuevo cliente</button>
+        <label for="loanCliente">Cliente</label>
+        <select id="loanCliente" required>
+          <option value="">Seleccionar cliente</option>
+        </select>
+        <button type="button" class="inline-btn" onclick="openQuickClient()">+ Nuevo cliente</button>
       </div>
-      <div class="row2">
-        <div class="form-group"><label>Importe</label><input id="loanImporte" class="money-input" type="text" inputmode="numeric" placeholder="1.000.000" required oninput="calcLoan()"/></div>
-        <div class="form-group"><label>Interés %</label><input id="loanInteres" type="number" min="0" step="0.1" placeholder="0" required oninput="calcLoan()"/></div>
-      </div>
-      <div class="row2">
-        <div class="form-group"><label>Modalidad</label><select id="loanModalidad" onchange="calcLoan()"><option>DIARIO</option><option selected>SEMANAL</option><option>QUINCENAL</option><option>MENSUAL</option></select></div>
-        <div class="form-group"><label>Cuotas</label><input id="loanCuotas" type="number" min="1" step="1" placeholder="10" required oninput="calcLoan()"/></div>
+      <div class="form-group">
+        <label for="loanImporte">Capital prestado (COP)</label>
+        <input id="loanImporte" class="money-input" type="text" inputmode="numeric"
+          placeholder="0" required oninput="calcLoan()">
       </div>
       <div class="row2">
         <div class="form-group">
-          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:7px">
-            <label style="margin:0">Importe total</label>
-            <label style="display:flex;align-items:center;gap:6px;font-size:12px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;cursor:pointer">
-              <input type="checkbox" id="toggleManual" onchange="onToggleManual()" style="width:16px;height:16px;cursor:pointer"/>
-              Editar manualmente
-            </label>
-          </div>
-          <input id="loanImporteTotal" class="readonly-field money-input" type="text" inputmode="numeric" readonly placeholder="Se calcula automático" oninput="if(document.getElementById('toggleManual').checked) calcLoan()"/>
+          <label for="loanInteres">Interés mensual (%)</label>
+          <input id="loanInteres" type="number" step="0.1" min="0" placeholder="0" oninput="calcLoan()">
         </div>
-        <div class="form-group"><label>Cuota</label><input id="loanCuota" class="readonly-field" type="text" readonly/><p class="hint">Redondeada al múltiplo de $1.000.</p></div>
-        <div id="loanDesglose" class="loan-desglose" style="display:none"></div>
+        <div class="form-group">
+          <label for="loanCuotas">N° de cuotas</label>
+          <input id="loanCuotas" type="number" min="1" placeholder="0" required oninput="calcLoan()">
+        </div>
+      </div>
+      <div class="form-group">
+        <label for="loanModalidad">Modalidad</label>
+        <select id="loanModalidad" onchange="calcLoan()">
+          <option value="DIARIO">Diario</option>
+          <option value="SEMANAL" selected>Semanal</option>
+          <option value="QUINCENAL">Quincenal</option>
+          <option value="MENSUAL">Mensual</option>
+        </select>
+      </div>
+      <div id="loanDesglose" class="loan-desglose" style="display:none;"></div>
+      <div class="form-group" style="margin-top:4px;">
+        <label style="display:flex;align-items:center;gap:8px;text-transform:none;font-size:13px;font-weight:600;color:var(--muted);">
+          <input id="toggleManual" type="checkbox" onchange="onToggleManual()">
+          Ingresar total manualmente
+        </label>
+      </div>
+      <div class="row2">
+        <div class="form-group">
+          <label for="loanImporteTotal">Total a cobrar</label>
+          <input id="loanImporteTotal" class="money-input readonly-field" type="text" inputmode="numeric" readonly>
+        </div>
+        <div class="form-group">
+          <label for="loanCuota">Cuota (redondeada)</label>
+          <input id="loanCuota" class="readonly-field" type="text" readonly>
+          <p class="hint">Redondeada al múltiplo de $1.000.</p>
+        </div>
       </div>
       <div class="form-actions">
         <button type="button" class="btn btn-cancel" onclick="closeModal('loanModal')">Cancelar</button>
@@ -127,69 +280,101 @@
   </div>
 </div>
 
-<!-- MODAL CLIENTE (también se usa desde préstamo) -->
+<!-- Nuevo / Editar Cliente -->
 <div id="clientModal" class="modal">
   <div class="sheet">
     <div class="sheet-handle"></div>
-    <div class="sheet-head"><div id="clientModalTitle" class="sheet-title">Nuevo cliente</div><button class="close-btn" onclick="closeModal('clientModal')">✕</button></div>
+    <div class="sheet-head">
+      <span class="sheet-title" id="clientModalTitle">Nuevo cliente</span>
+      <button class="close-btn" onclick="closeModal('clientModal')">✕</button>
+    </div>
     <form onsubmit="saveClient(event)">
-      <input id="clientId" type="hidden"/>
-      <input id="clientFromLoan" type="hidden" value="0"/>
-      <div class="form-group"><label>Nombre completo</label><input id="clientNombre" type="text" required/></div>
-      <div class="form-group"><label>Identificación (CC/NIT)</label><input id="clientIdentificacion" type="text"/></div>
-      <div class="row2">
-        <div class="form-group"><label>Teléfono</label><input id="clientTelefono" type="tel"/></div>
-        <div class="form-group"><label>Email</label><input id="clientEmail" type="email"/></div>
+      <input type="hidden" id="clientId">
+      <input type="hidden" id="clientFromLoan" value="0">
+      <div class="form-group">
+        <label for="clientNombre">Nombre completo *</label>
+        <input id="clientNombre" type="text" placeholder="Ej. Juan Pérez" required autocomplete="name">
       </div>
-      <div class="form-group"><label>Dirección</label><input id="clientDireccion" type="text"/></div>
+      <div class="row2">
+        <div class="form-group">
+          <label for="clientIdentificacion">Cédula / ID</label>
+          <input id="clientIdentificacion" type="text" placeholder="123456789" inputmode="numeric">
+        </div>
+        <div class="form-group">
+          <label for="clientTelefono">Teléfono</label>
+          <input id="clientTelefono" type="tel" placeholder="300 000 0000">
+        </div>
+      </div>
+      <div class="form-group">
+        <label for="clientEmail">Correo (opcional)</label>
+        <input id="clientEmail" type="email" placeholder="cliente@correo.com" autocomplete="email">
+      </div>
+      <div class="form-group">
+        <label for="clientDireccion">Dirección (opcional)</label>
+        <input id="clientDireccion" type="text" placeholder="Calle 123 # 45-67">
+      </div>
       <div class="form-actions">
         <button type="button" class="btn btn-cancel" onclick="closeModal('clientModal')">Cancelar</button>
-        <button type="submit" class="btn btn-primary">Guardar cliente</button>
+        <button type="submit" class="btn btn-primary">Guardar</button>
       </div>
     </form>
   </div>
 </div>
 
-<!-- MODAL PAGO -->
+<!-- Nuevo / Editar Pago -->
 <div id="paymentModal" class="modal">
   <div class="sheet">
     <div class="sheet-handle"></div>
-    <div class="sheet-head"><div class="sheet-title">Registrar pago</div><button class="close-btn" onclick="closeModal('paymentModal')">✕</button></div>
+    <div class="sheet-head">
+      <span class="sheet-title">Registrar pago</span>
+      <button class="close-btn" onclick="closeModal('paymentModal')">✕</button>
+    </div>
     <form onsubmit="savePayment(event)">
-      <input id="paymentId" type="hidden"/>
+      <input type="hidden" id="paymentId">
       <div class="form-group">
-        <label>Préstamo</label>
+        <label for="paymentLoanId">Préstamo</label>
         <select id="paymentLoanId" required onchange="fillPaymentInfo()"></select>
       </div>
       <div id="loanInfoBox"></div>
-      <div class="row2">
-        <div class="form-group"><label>Fecha</label><input id="paymentFecha" type="date" required/></div>
-        <div class="form-group"><label>Monto</label><input id="paymentMonto" class="money-input" type="text" inputmode="numeric" placeholder="240.000" required/></div>
+      <div class="form-group">
+        <label for="paymentFecha">Fecha del pago</label>
+        <input id="paymentFecha" type="date" required>
+      </div>
+      <div class="form-group">
+        <label for="paymentMonto">Monto (COP)</label>
+        <input id="paymentMonto" class="money-input" type="text" inputmode="numeric" placeholder="0" required>
       </div>
       <div class="form-actions">
         <button type="button" class="btn btn-cancel" onclick="closeModal('paymentModal')">Cancelar</button>
-        <button type="submit" class="btn btn-primary">Guardar pago</button>
+        <button type="submit" class="btn btn-primary">Registrar</button>
       </div>
     </form>
   </div>
 </div>
 
-<script src="app.js"></script>
-  <!-- ── MODAL CRONOGRAMA ── -->
-  <div id="scheduleModal" class="modal">
-    <div class="sheet">
-      <div class="sheet-handle"></div>
-      <div class="sheet-head">
-        <div id="scheduleTitle" class="sheet-title">Cronograma</div>
-        <button class="close-btn" onclick="closeModal('scheduleModal')">✕</button>
-      </div>
-      <div style="overflow-x:auto">
-        <table class="schedule-table">
-          <thead><tr><th>#</th><th>Fecha</th><th>Cuota</th><th>Estado</th></tr></thead>
-          <tbody id="scheduleTable"></tbody>
-        </table>
-      </div>
+<!-- Cronograma -->
+<div id="scheduleModal" class="modal">
+  <div class="sheet">
+    <div class="sheet-handle"></div>
+    <div class="sheet-head">
+      <span class="sheet-title" id="scheduleTitle">Cronograma</span>
+      <button class="close-btn" onclick="closeModal('scheduleModal')">✕</button>
+    </div>
+    <div style="overflow-x:auto;">
+      <table class="schedule-table">
+        <thead>
+          <tr>
+            <th>#</th><th>Fecha</th><th>Cuota</th><th>Estado</th>
+          </tr>
+        </thead>
+        <tbody id="scheduleTable"></tbody>
+      </table>
     </div>
   </div>
+</div>
+
+<!-- Supabase CDN -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="app.js"></script>
 </body>
 </html>
