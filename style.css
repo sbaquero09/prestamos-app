@@ -156,7 +156,7 @@ button { transition: transform .12s ease, opacity .12s ease, background-color .1
 .topbar {
   position: sticky; top: 0; z-index: 30;
   background: linear-gradient(160deg, var(--brand) 0%, var(--brand-dark) 100%);
-  color: #fff; padding: 14px 16px 16px;
+  color: #fff; padding: calc(14px + env(safe-area-inset-top)) 16px 16px;
   box-shadow: 0 8px 24px rgba(15,118,110,.3);
 }
 .topbar-row { display: flex; align-items: center; justify-content: space-between; }
@@ -379,7 +379,8 @@ button { transition: transform .12s ease, opacity .12s ease, background-color .1
 .sheet-title { font-size: 20px; font-weight: 800; letter-spacing: -.03em; }
 .close-btn {
   border: 1px solid var(--border); background: var(--surface-2);
-  width: 36px; height: 36px; border-radius: 12px; cursor: pointer; font-size: 16px; color: var(--text);
+  width: 36px; height: 36px; border-radius: 12px; cursor: pointer; color: var(--text);
+  display: grid; place-items: center;
 }
 
 /* ── FORMS ────────────────────────────────────────── */
