@@ -31,6 +31,9 @@
   --mensual-soft:   #f5f3ff;
   --mensual-border: #ddd6fe;
   --mensual-text:   #6d28d9;
+  --capitalizable-soft:   #fdf2f8;
+  --capitalizable-border: #fbcfe8;
+  --capitalizable-text:   #be185d;
   --info-soft:   #eff6ff;
   --info-border: #bfdbfe;
   --info-text:   #1e40af;
@@ -77,6 +80,9 @@
   --mensual-soft:   rgba(196,181,253,.14);
   --mensual-border: rgba(196,181,253,.35);
   --mensual-text:   #c4b5fd;
+  --capitalizable-soft:   rgba(244,114,182,.14);
+  --capitalizable-border: rgba(244,114,182,.35);
+  --capitalizable-text:   #f9a8d4;
   --info-soft:   rgba(96,165,250,.12);
   --info-border: rgba(96,165,250,.35);
   --info-text:   #93c5fd;
@@ -267,6 +273,7 @@ button { transition: transform .12s ease, opacity .12s ease, background-color .1
 .chip.quincenal { background: var(--quincenal-soft); border-color: var(--quincenal-border); color: var(--quincenal-text); }
 .chip.mensual   { background: var(--mensual-soft); border-color: var(--mensual-border); color: var(--mensual-text); }
 .chip.renovable { background: var(--mensual-soft); border-color: var(--mensual-border); color: var(--mensual-text); }
+.chip.capitalizable { background: var(--capitalizable-soft); border-color: var(--capitalizable-border); color: var(--capitalizable-text); }
 .item-actions { display: flex; gap: 6px; flex-shrink: 0; }
 .icon-btn {
   width: 38px; height: 38px; border-radius: 12px;

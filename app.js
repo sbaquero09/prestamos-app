@@ -115,8 +115,37 @@ function calcMeses(cuotas, modalidad) {
 }
 function clientById(id)   { return clients.find(c => String(c.id) === String(id)); }
 function clientName(id)   { return clientById(id)?.nombre || 'Sin cliente'; }
+
+// ── PRÉSTAMOS CON CAPITALIZACIÓN BANCARIA ───────────
+// El saldo no es una fórmula fija: depende de todo el historial de pagos
+// (si un período se paga de menos, el faltante se suma al capital).
+function capitalizableLedger(loan) {
+  const cuotas     = Number(loan.cuotas || 0);
+  const interesPct = Number(loan.interes || 0) / 100;
+  const pagos = payments
+    .filter(p => String(p.loan_id) === String(loan.id))
+    .slice()
+    .sort((a, b) => String(a.fecha).localeCompare(String(b.fecha)));
+  let balance = Number(loan.importe || 0);
+  const rows = [];
+  for (let n = 1; n <= cuotas && n - 1 < pagos.length; n++) {
+    const interesPeriodo = redondear1000(balance * interesPct);
+    const pago  = Number(pagos[n - 1].monto || 0);
+    const delta = pago - interesPeriodo; // negativo = capitaliza
+    balance = Math.max(0, balance - delta);
+    rows.push({
+      n, fecha: pagos[n - 1].fecha, interesPeriodo, pago,
+      capitalizado: delta < 0 ? -delta : 0,
+      balance,
+    });
+  }
+  const periodsProcessed = rows.length;
+  const nextInteres = periodsProcessed < cuotas ? redondear1000(balance * interesPct) : 0;
+  return { rows, balance, periodsProcessed, nextInteres };
+}
+
 function loanExpected(l)  {
-  if (l.tipo === 'RENOVABLE') return Number(l.importe || 0);
+  if (l.tipo === 'RENOVABLE' || l.tipo === 'CAPITALIZABLE') return Number(l.importe || 0);
   return Number(l.cuota || 0) * Number(l.cuotas || 0);
 }
 function loanPaid(loanId) {
@@ -130,6 +159,7 @@ function loanCerrado(l) {
 }
 function loanBalance(l) {
   if (l.tipo === 'RENOVABLE') return loanCerrado(l) ? 0 : Number(l.importe || 0);
+  if (l.tipo === 'CAPITALIZABLE') return capitalizableLedger(l).balance;
   return Math.max(0, loanExpected(l) - loanPaid(l.id));
 }
 function loanStatus(l) {
@@ -380,7 +410,8 @@ function renderLoans() {
   const wrap = document.getElementById('loanList');
   if (!list.length) { wrap.innerHTML = `<div class="empty">${icon('credit-card')}No hay préstamos.</div>`; return; }
   wrap.innerHTML = list.map(l => {
-    const isRenovable = l.tipo === 'RENOVABLE';
+    const isRenovable     = l.tipo === 'RENOVABLE';
+    const isCapitalizable = l.tipo === 'CAPITALIZABLE';
     const next    = nextDueDate(l);
     const diff    = daysDiff(next);
     const balance = loanBalance(l);
@@ -399,6 +430,13 @@ function renderLoans() {
       balanceLine  = balance > 0
         ? `Capital pendiente ${formatCOP(balance)} · Próx. <strong>${next}</strong>`
         : `Capital devuelto · préstamo cerrado`;
+    } else if (isCapitalizable) {
+      const ledger = capitalizableLedger(l);
+      progressChip = `<span class="chip">${ledger.periodsProcessed}/${l.cuotas} cuotas</span>`;
+      amountLine   = `${formatCOP(l.importe)} capital inicial · interés ${l.interes}%`;
+      balanceLine  = balance > 0
+        ? `Saldo vivo ${formatCOP(balance)} · Próx. interés ${formatCOP(ledger.nextInteres)} · <strong>${next}</strong>`
+        : `Pagado completamente`;
     } else {
       const paid = loanPaid(l.id);
       const total = loanExpected(l);
@@ -414,7 +452,7 @@ function renderLoans() {
           <div class="item-title">${clientName(l.cliente_id)}</div>
           <div class="item-meta">${l.fecha}</div>
           <div class="chips">
-            <span class="chip ${mc}">${l.modalidad}</span>${isRenovable ? '<span class="chip renovable">Renovable</span>' : ''}${chip}
+            <span class="chip ${mc}">${l.modalidad}</span>${isRenovable ? '<span class="chip renovable">Renovable</span>' : ''}${isCapitalizable ? '<span class="chip capitalizable">Capitalizable</span>' : ''}${chip}
             ${progressChip}
           </div>
           <div class="item-amount">${amountLine}</div>
@@ -544,10 +582,11 @@ function editLoan(loan) { openLoanModal(loan); }
 
 function onLoanTipoChange(loan) {
   const tipo = document.getElementById('loanTipo').value;
-  document.getElementById('amortizableFields').style.display = tipo === 'AMORTIZABLE' ? '' : 'none';
-  document.getElementById('renovableFields').style.display   = tipo === 'RENOVABLE'   ? '' : 'none';
-  document.getElementById('cuotasField').style.display       = tipo === 'AMORTIZABLE' ? '' : 'none';
-  document.getElementById('loanCuotas').required = tipo === 'AMORTIZABLE';
+  document.getElementById('amortizableFields').style.display   = tipo === 'AMORTIZABLE'   ? '' : 'none';
+  document.getElementById('renovableFields').style.display     = tipo === 'RENOVABLE'     ? '' : 'none';
+  document.getElementById('capitalizableFields').style.display = tipo === 'CAPITALIZABLE' ? '' : 'none';
+  document.getElementById('cuotasField').style.display = tipo !== 'RENOVABLE' ? '' : 'none';
+  document.getElementById('loanCuotas').required = tipo !== 'RENOVABLE';
   calcLoan(loan);
 }
 
@@ -573,6 +612,12 @@ function calcLoan(loan) {
     const cuotaInt = importe > 0 ? redondear1000(importe * interes / 100) : 0;
     const ci = document.getElementById('loanCuotaInteres');
     if (ci) ci.value = cuotaInt > 0 ? cuotaInt.toLocaleString('es-CO') : '';
+    return;
+  }
+  if (tipo === 'CAPITALIZABLE') {
+    const cuotaInt = importe > 0 ? redondear1000(importe * interes / 100) : 0;
+    const cc = document.getElementById('loanCuotaCapitalizable');
+    if (cc) cc.value = cuotaInt > 0 ? cuotaInt.toLocaleString('es-CO') : '';
     return;
   }
   const cuotas    = Number(document.getElementById('loanCuotas').value)     || Number(loan?.cuotas   || 0);
@@ -615,6 +660,9 @@ async function saveLoan(e) {
   let payload;
   if (tipo === 'RENOVABLE') {
     payload = { ...base, cuotas: null, importe_total: null, cuota: redondear1000(importe * interes / 100) };
+  } else if (tipo === 'CAPITALIZABLE') {
+    const cuotas = Number(document.getElementById('loanCuotas').value);
+    payload = { ...base, cuotas, importe_total: null, cuota: redondear1000(importe * interes / 100) };
   } else {
     const cuotas     = Number(document.getElementById('loanCuotas').value);
     const modoManual = document.getElementById('toggleManual')?.checked;
@@ -784,9 +832,13 @@ async function deleteClient(id) {
 function openPaymentModal(preselectedLoanId) {
   document.getElementById('paymentId').value = '';
   const sel = document.getElementById('paymentLoanId');
-  sel.innerHTML = loans.map(l =>
-    `<option value="${l.id}">${clientName(l.cliente_id)} — ${formatCOP(l.cuota)}${l.tipo === 'RENOVABLE' ? ' (interés)' : ' × ' + l.cuotas}</option>`
-  ).join('');
+  sel.innerHTML = loans.map(l => {
+    let label;
+    if (l.tipo === 'RENOVABLE')          label = `${formatCOP(l.cuota)} (interés)`;
+    else if (l.tipo === 'CAPITALIZABLE') label = `${formatCOP(capitalizableLedger(l).nextInteres || l.cuota)} (interés)`;
+    else                                  label = `${formatCOP(l.cuota)} × ${l.cuotas}`;
+    return `<option value="${l.id}">${clientName(l.cliente_id)} — ${label}</option>`;
+  }).join('');
   if (preselectedLoanId) sel.value = String(preselectedLoanId);
   document.getElementById('paymentFecha').value = today();
   document.getElementById('paymentMonto').value = '';
@@ -805,9 +857,10 @@ function fillPaymentInfo() {
   const label     = diff === 0 ? 'Hoy' : diff < 0 ? `Hace ${Math.abs(diff)}d` : `En ${diff}d`;
   const urg       = diff < 0 ? 'danger' : diff <= 3 ? 'warn' : 'ok';
   const pagadasLabel = loan.tipo === 'RENOVABLE' ? `${paidCount} pagos de interés` : `${paidCount} / ${loan.cuotas}`;
+  const cuotaActual  = loan.tipo === 'CAPITALIZABLE' ? (capitalizableLedger(loan).nextInteres || loan.cuota) : loan.cuota;
   box.innerHTML = `
     <div class="loan-info-box">
-      <div class="info-row"><div class="info-label">Cuota</div><div class="info-value">${formatCOP(loan.cuota)}</div></div>
+      <div class="info-row"><div class="info-label">Cuota</div><div class="info-value">${formatCOP(cuotaActual)}</div></div>
       <div class="info-row"><div class="info-label">Pagadas</div><div class="info-value">${pagadasLabel}</div></div>
       <div class="info-row"><div class="info-label">Saldo</div><div class="info-value">${formatCOP(balance)}</div></div>
       <div class="info-row">
@@ -818,7 +871,7 @@ function fillPaymentInfo() {
       </div>
     </div>`;
   const m = document.getElementById('paymentMonto');
-  if (!m.value) m.value = Number(loan.cuota).toLocaleString('es-CO');
+  if (!m.value) m.value = Number(cuotaActual).toLocaleString('es-CO');
 }
 
 async function savePayment(e) {
@@ -871,6 +924,31 @@ function openSchedule(loanId) {
       else if (diff === 0){ cls = 'sched-today'; badge = `<span class="chip warn" style="font-size:11px">Hoy</span>`; }
       else if (diff <= 3) { cls = 'sched-soon';  badge = `<span class="chip warn" style="font-size:11px">En ${diff}d</span>`; }
       rows += `<tr class="${cls}"><td>—</td><td>${next}</td><td>${formatCOP(loan.cuota)}</td><td>${badge}</td></tr>`;
+    }
+    document.getElementById('scheduleTable').innerHTML = rows ||
+      `<tr><td colspan="4" style="text-align:center;color:var(--muted)">Sin pagos registrados todavía.</td></tr>`;
+    openModal('scheduleModal');
+    return;
+  }
+
+  if (loan.tipo === 'CAPITALIZABLE') {
+    const ledger = capitalizableLedger(loan);
+    let rows = ledger.rows.map(r => {
+      const badge = r.capitalizado > 0
+        ? `<span class="chip warn" style="font-size:11px">Capitalizó ${formatCOP(r.capitalizado)}</span>`
+        : `<span class="chip ok" style="font-size:11px">Pagada</span>`;
+      const cls = r.capitalizado > 0 ? 'sched-late' : 'sched-paid';
+      return `<tr class="${cls}"><td>${r.n}</td><td>${r.fecha}</td><td>${formatCOP(r.interesPeriodo)}</td><td>${badge}</td></tr>`;
+    }).join('');
+    if (ledger.periodsProcessed < Number(loan.cuotas)) {
+      const nextN = ledger.periodsProcessed + 1;
+      const next  = dueDateForCuota(loan, nextN);
+      const diff  = daysDiff(next);
+      let cls = '', badge = `<span class="chip" style="font-size:11px">Próximo</span>`;
+      if (diff < 0)       { cls = 'sched-late';  badge = `<span class="chip danger" style="font-size:11px">Venció ${Math.abs(diff)}d</span>`; }
+      else if (diff === 0){ cls = 'sched-today'; badge = `<span class="chip warn" style="font-size:11px">Hoy</span>`; }
+      else if (diff <= 3) { cls = 'sched-soon';  badge = `<span class="chip warn" style="font-size:11px">En ${diff}d</span>`; }
+      rows += `<tr class="${cls}"><td>${nextN}</td><td>${next}</td><td>${formatCOP(ledger.nextInteres)}</td><td>${badge}</td></tr>`;
     }
     document.getElementById('scheduleTable').innerHTML = rows ||
       `<tr><td colspan="4" style="text-align:center;color:var(--muted)">Sin pagos registrados todavía.</td></tr>`;
