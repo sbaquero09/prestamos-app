@@ -14,6 +14,7 @@ let clients     = [];
 let loans       = [];
 let payments    = [];
 let config      = { capital_inicial: 2000000 };
+let loanFilter  = 'todos';
 
 // ── FORMATEO ────────────────────────────────────────
 function formatCOP(value) {
@@ -54,6 +55,24 @@ function initFieldValidation() {
       }
     }, true);
   });
+}
+
+// ── TEMA (claro/oscuro) ──────────────────────────────
+function applyTheme(theme) {
+  document.documentElement.dataset.theme = theme;
+  const iconUse = document.querySelector('#themeIcon use');
+  const sw = document.getElementById('themeSwitch');
+  if (iconUse) iconUse.setAttribute('href', theme === 'dark' ? '#icon-moon' : '#icon-sun');
+  if (sw) sw.classList.toggle('on', theme === 'dark');
+}
+function initTheme() {
+  const saved = localStorage.getItem('theme');
+  applyTheme(saved || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'));
+}
+function toggleTheme() {
+  const next = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
+  localStorage.setItem('theme', next);
+  applyTheme(next);
 }
 
 // ── ÍCONOS ──────────────────────────────────────────
@@ -102,6 +121,10 @@ function loanPaid(loanId) {
     .reduce((s, p) => s + Number(p.monto || 0), 0);
 }
 function loanBalance(l)   { return Math.max(0, loanExpected(l) - loanPaid(l.id)); }
+function loanStatus(l) {
+  if (loanBalance(l) <= 0) return 'completados';
+  return daysDiff(nextDueDate(l)) < 0 ? 'vencidos' : 'activos';
+}
 function loansDueSoon() {
   return loans.filter(l => {
     if (loanBalance(l) <= 0) return false;
@@ -329,9 +352,19 @@ function renderStats() {
     : '';
 }
 
+function setLoanFilter(f) {
+  loanFilter = f;
+  document.querySelectorAll('#loanFilterRow .filter-chip').forEach(b =>
+    b.classList.toggle('active', b.dataset.filter === f)
+  );
+  renderLoans();
+}
 function renderLoans() {
   const q    = norm(document.getElementById('searchLoans').value);
-  const list = loans.filter(l => norm(clientName(l.cliente_id)).includes(q));
+  const list = loans.filter(l =>
+    norm(clientName(l.cliente_id)).includes(q) &&
+    (loanFilter === 'todos' || loanStatus(l) === loanFilter)
+  );
   const wrap = document.getElementById('loanList');
   if (!list.length) { wrap.innerHTML = `<div class="empty">${icon('credit-card')}No hay préstamos.</div>`; return; }
   wrap.innerHTML = list.map(l => {
@@ -419,13 +452,14 @@ function renderClients() {
     return `
     <div class="list-item">
       <div class="list-top">
-        <div style="flex:1;min-width:0">
+        <div style="flex:1;min-width:0" class="clickable" onclick="openClientDetail(${c.id})">
           <div class="item-title">${c.nombre}</div>
           <div class="item-meta">${c.identificacion||'Sin cédula'} · ${c.telefono||'Sin teléfono'}</div>
           <div class="chips"><span class="chip">${n} préstamo${n!==1?'s':''}</span></div>
           ${c.email ? `<div style="font-size:13px;color:var(--muted);margin-top:6px">${c.email}</div>` : ''}
         </div>
         <div class="item-actions">
+          <button class="icon-btn" title="Ver detalle" onclick="openClientDetail(${c.id})">${icon('eye')}</button>
           <button class="icon-btn" title="Editar" onclick="editClient('${cJson}')">${icon('edit')}</button>
           <button class="icon-btn danger" title="Eliminar" onclick="deleteClient(${c.id})">${icon('trash')}</button>
         </div>
@@ -438,6 +472,7 @@ function renderClients() {
 function openSettings() {
   const v = Number(config.capital_inicial||0);
   document.getElementById('cfgCapital').value = v > 0 ? v.toLocaleString('es-CO') : '';
+  applyTheme(document.documentElement.dataset.theme || 'light');
   openModal('settingsModal');
 }
 async function saveSettings() {
@@ -611,6 +646,69 @@ async function saveClient(e) {
   }
 }
 
+function openClientDetail(id) {
+  const c = clientById(id);
+  if (!c) return;
+  const clientLoans = loans.filter(l => String(l.cliente_id) === String(id));
+  const clientPayments = payments
+    .filter(p => clientLoans.some(l => String(l.id) === String(p.loan_id)))
+    .slice()
+    .sort((a, b) => String(b.fecha).localeCompare(String(a.fecha)));
+  const totalPrestado = clientLoans.reduce((s, l) => s + Number(l.importe || 0), 0);
+  const totalPagado   = clientLoans.reduce((s, l) => s + loanPaid(l.id), 0);
+  const initials = c.nombre.split(' ').filter(Boolean).slice(0, 2).map(w => w[0]).join('').toUpperCase() || '?';
+
+  const loansHtml = clientLoans.length
+    ? clientLoans.map(l => {
+        const balance = loanBalance(l);
+        const status  = balance <= 0 ? 'Completado' : (daysDiff(nextDueDate(l)) < 0 ? 'Vencido' : 'Al día');
+        return `<div class="mini-item">
+          <div><div class="mini-title">${formatCOP(l.importe)} · ${l.modalidad}</div><div class="mini-meta">${l.fecha} · ${status}</div></div>
+          <div class="mini-amount">${formatCOP(balance)}</div>
+        </div>`;
+      }).join('')
+    : `<p class="hint">Sin préstamos registrados.</p>`;
+
+  const paymentsHtml = clientPayments.length
+    ? clientPayments.map(p => `<div class="mini-item">
+        <div><div class="mini-title">${formatCOP(p.monto)}</div><div class="mini-meta">${p.fecha}</div></div>
+      </div>`).join('')
+    : `<p class="hint">Sin pagos registrados.</p>`;
+
+  document.getElementById('clientDetailBody').innerHTML = `
+    <div class="detail-header">
+      <div class="detail-avatar">${initials}</div>
+      <div>
+        <div class="detail-name">${c.nombre}</div>
+        <div class="detail-meta">${c.identificacion || 'Sin cédula'} · ${c.telefono || 'Sin teléfono'}</div>
+      </div>
+    </div>
+    <div class="detail-stats">
+      <div class="stat"><div class="stat-label">Total prestado</div><div class="stat-value">${formatCOP(totalPrestado)}</div></div>
+      <div class="stat"><div class="stat-label">Total pagado</div><div class="stat-value">${formatCOP(totalPagado)}</div></div>
+    </div>
+    <div class="detail-section-title">Préstamos (${clientLoans.length})</div>
+    ${loansHtml}
+    <div class="detail-section-title">Historial de pagos (${clientPayments.length})</div>
+    ${paymentsHtml}
+    <div class="form-actions">
+      <button type="button" class="btn btn-cancel" onclick="editClientFromDetail(${c.id})">Editar</button>
+      <button type="button" class="btn btn-primary" onclick="newLoanForClient(${c.id})">+ Préstamo</button>
+    </div>
+  `;
+  openModal('clientDetailModal');
+}
+function editClientFromDetail(id) {
+  closeModal('clientDetailModal');
+  openClientModal(clientById(id));
+}
+function newLoanForClient(id) {
+  closeModal('clientDetailModal');
+  goTab('prestamos');
+  openLoanModal();
+  document.getElementById('loanCliente').value = String(id);
+}
+
 async function deleteClient(id) {
   if (loans.some(l => String(l.cliente_id) === String(id))) {
     alert('No puedes eliminar un cliente con préstamos activos.'); return;
@@ -704,8 +802,16 @@ function openSchedule(loanId) {
   openModal('scheduleModal');
 }
 
+// ── PWA: SERVICE WORKER ─────────────────────────────
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('sw.js').catch(() => {});
+  });
+}
+
 // ── INIT ────────────────────────────────────────────
 (async () => {
+  initTheme();
   initFieldValidation();
   const { data: { session } } = await sb.auth.getSession();
   if (session?.user) showAppShell(session.user);
