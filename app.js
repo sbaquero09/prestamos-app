@@ -39,6 +39,28 @@ function initMoneyInputs() {
   });
 }
 
+// ── VALIDACIÓN VISUAL DE FORMULARIOS ────────────────
+function initFieldValidation() {
+  document.querySelectorAll('form').forEach(form => {
+    form.querySelectorAll('input, select').forEach(el => {
+      el.addEventListener('invalid', () => el.classList.add('field-invalid'));
+      el.addEventListener('input',   () => el.classList.remove('field-invalid'));
+      el.addEventListener('change',  () => el.classList.remove('field-invalid'));
+    });
+    form.addEventListener('submit', () => {
+      if (!form.checkValidity()) {
+        const sheet = form.closest('.sheet');
+        if (sheet) { sheet.classList.remove('shake'); void sheet.offsetWidth; sheet.classList.add('shake'); }
+      }
+    }, true);
+  });
+}
+
+// ── ÍCONOS ──────────────────────────────────────────
+function icon(name, cls = 'icon') {
+  return `<svg class="${cls}"><use href="#icon-${name}"/></svg>`;
+}
+
 // ── UTILIDADES ──────────────────────────────────────
 function redondear1000(v)  { return Math.ceil(v / 1000) * 1000; }
 function today()           { return new Date().toISOString().slice(0, 10); }
@@ -181,7 +203,7 @@ async function handleRegister(e) {
   if (error) { showAuthMsg('regError', translateAuthError(error.message)); return; }
   if (data.session) { showAppShell(data.user); return; }
   showAuthMsg('regError',
-    '⚠️ Debes desactivar "Confirm email" en Supabase → Authentication → Providers → Email.',
+    'Debes desactivar "Confirm email" en Supabase → Authentication → Providers → Email.',
     false
   );
 }
@@ -231,8 +253,21 @@ document.querySelectorAll('.modal').forEach(m =>
 );
 
 // ── CARGA DE DATOS ─────────────────────────────────
+function skeletonCard(lines = 2) {
+  return `<div class="skeleton-card">${
+    Array.from({ length: lines }, () => `<div class="skeleton skeleton-line"></div>`).join('')
+  }</div>`;
+}
+function renderSkeletons() {
+  document.getElementById('statsGrid').innerHTML =
+    Array.from({ length: 6 }, () => skeletonCard(2)).join('');
+  document.getElementById('loanList').innerHTML     = Array.from({ length: 3 }, () => skeletonCard(3)).join('');
+  document.getElementById('paymentList').innerHTML  = Array.from({ length: 3 }, () => skeletonCard(2)).join('');
+  document.getElementById('clientList').innerHTML   = Array.from({ length: 3 }, () => skeletonCard(2)).join('');
+}
 async function loadData() {
   if (!currentUser) return;
+  renderSkeletons();
   const uid = currentUser.id;
   const [
     { data: cfg, error: e1 },
@@ -298,7 +333,7 @@ function renderLoans() {
   const q    = norm(document.getElementById('searchLoans').value);
   const list = loans.filter(l => norm(clientName(l.cliente_id)).includes(q));
   const wrap = document.getElementById('loanList');
-  if (!list.length) { wrap.innerHTML = '<div class="empty">No hay préstamos.</div>'; return; }
+  if (!list.length) { wrap.innerHTML = `<div class="empty">${icon('credit-card')}No hay préstamos.</div>`; return; }
   wrap.innerHTML = list.map(l => {
     const next    = nextDueDate(l);
     const diff    = daysDiff(next);
@@ -328,10 +363,10 @@ function renderLoans() {
           </div>
         </div>
         <div class="item-actions">
-          <button class="icon-btn" title="Cronograma"  onclick="openSchedule(${l.id})">📅</button>
-          <button class="icon-btn" title="Pago"        onclick="openPaymentForLoan(${l.id})">💰</button>
-          <button class="icon-btn" title="Editar"      onclick="editLoan('${lJson}')">✏️</button>
-          <button class="icon-btn" title="Eliminar"    onclick="deleteLoan(${l.id})">🗑️</button>
+          <button class="icon-btn" title="Cronograma"  onclick="openSchedule(${l.id})">${icon('calendar')}</button>
+          <button class="icon-btn" title="Pago"        onclick="openPaymentForLoan(${l.id})">${icon('dollar')}</button>
+          <button class="icon-btn" title="Editar"      onclick="editLoan('${lJson}')">${icon('edit')}</button>
+          <button class="icon-btn danger" title="Eliminar" onclick="deleteLoan(${l.id})">${icon('trash')}</button>
         </div>
       </div>
     </div>`;
@@ -350,7 +385,7 @@ function renderPayments() {
       : false;
   });
   const wrap = document.getElementById('paymentList');
-  if (!list.length) { wrap.innerHTML = '<div class="empty">No hay pagos registrados.</div>'; return; }
+  if (!list.length) { wrap.innerHTML = `<div class="empty">${icon('dollar')}No hay pagos registrados.</div>`; return; }
   wrap.innerHTML = list.map(p => {
     const loan = loans.find(l => String(l.id) === String(p.loan_id));
     const name = loan ? clientName(loan.cliente_id) : 'Préstamo eliminado';
@@ -364,7 +399,7 @@ function renderPayments() {
         </div>
         <div style="display:flex;flex-direction:column;align-items:flex-end;gap:8px">
           <div class="item-amount">${formatCOP(p.monto)}</div>
-          <button class="icon-btn" title="Eliminar" onclick="deletePayment(${p.id})">🗑️</button>
+          <button class="icon-btn danger" title="Eliminar" onclick="deletePayment(${p.id})">${icon('trash')}</button>
         </div>
       </div>
     </div>`;
@@ -377,7 +412,7 @@ function renderClients() {
     norm(c.nombre).includes(q) || norm(c.identificacion).includes(q) || norm(c.telefono).includes(q)
   );
   const wrap = document.getElementById('clientList');
-  if (!list.length) { wrap.innerHTML = '<div class="empty">No hay clientes.</div>'; return; }
+  if (!list.length) { wrap.innerHTML = `<div class="empty">${icon('users')}No hay clientes.</div>`; return; }
   wrap.innerHTML = list.map(c => {
     const n     = loans.filter(l => String(l.cliente_id) === String(c.id)).length;
     const cJson = JSON.stringify(c).replace(/"/g,'&quot;');
@@ -391,8 +426,8 @@ function renderClients() {
           ${c.email ? `<div style="font-size:13px;color:var(--muted);margin-top:6px">${c.email}</div>` : ''}
         </div>
         <div class="item-actions">
-          <button class="icon-btn" onclick="editClient('${cJson}')">✏️</button>
-          <button class="icon-btn" onclick="deleteClient(${c.id})">🗑️</button>
+          <button class="icon-btn" title="Editar" onclick="editClient('${cJson}')">${icon('edit')}</button>
+          <button class="icon-btn danger" title="Eliminar" onclick="deleteClient(${c.id})">${icon('trash')}</button>
         </div>
       </div>
     </div>`;
@@ -671,6 +706,7 @@ function openSchedule(loanId) {
 
 // ── INIT ────────────────────────────────────────────
 (async () => {
+  initFieldValidation();
   const { data: { session } } = await sb.auth.getSession();
   if (session?.user) showAppShell(session.user);
   else               showAuthScreen();

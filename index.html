@@ -3,10 +3,37 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="theme-color" content="#0f766e">
   <title>Préstamos Pro</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%230f766e'%3E%3Crect width='24' height='24' rx='6'/%3E%3Cpath fill='%23fff' d='M18 10.5V7.75A1.75 1.75 0 0 0 16.25 6H6.5a2 2 0 0 0 0 4h11a1.75 1.75 0 0 1 1.75 1.75v.25M5 8.5v8.75A1.75 1.75 0 0 0 6.75 19h10.5A1.75 1.75 0 0 0 19 17.25V13a1.5 1.5 0 0 0-1.5-1.5h-3a1.75 1.75 0 0 0 0 3.5h.01' stroke='%23fff' stroke-width='1.3' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
+
+<!-- ══════════════════════════════════════════
+     SPRITE DE ÍCONOS (uso: <svg class="icon"><use href="#icon-NOMBRE"/></svg>)
+══════════════════════════════════════════ -->
+<svg style="display:none" aria-hidden="true">
+  <symbol id="icon-wallet" viewBox="0 0 24 24"><path d="M21 12V7H5a2 2 0 0 1 0-4h14v4"/><path d="M3 5v14a2 2 0 0 0 2 2h16v-5"/><path d="M18 12a2 2 0 0 0 0 4h4v-4Z"/></symbol>
+  <symbol id="icon-user" viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></symbol>
+  <symbol id="icon-users" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></symbol>
+  <symbol id="icon-settings" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></symbol>
+  <symbol id="icon-bar-chart" viewBox="0 0 24 24"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></symbol>
+  <symbol id="icon-credit-card" viewBox="0 0 24 24"><rect x="1" y="4" width="22" height="16" rx="2" ry="2"/><line x1="1" y1="10" x2="23" y2="10"/></symbol>
+  <symbol id="icon-dollar" viewBox="0 0 24 24"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></symbol>
+  <symbol id="icon-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></symbol>
+  <symbol id="icon-edit" viewBox="0 0 24 24"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></symbol>
+  <symbol id="icon-trash" viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></symbol>
+  <symbol id="icon-calendar" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></symbol>
+  <symbol id="icon-x" viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></symbol>
+  <symbol id="icon-log-out" viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></symbol>
+  <symbol id="icon-plus" viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></symbol>
+  <symbol id="icon-alert-triangle" viewBox="0 0 24 24"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></symbol>
+  <symbol id="icon-inbox" viewBox="0 0 24 24"><polyline points="22 12 16 12 14 15 10 15 8 12 2 12"/><path d="M5.45 5.11L2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></symbol>
+</svg>
 
 <!-- ══════════════════════════════════════════
      PANTALLA DE AUTH
@@ -15,7 +42,7 @@
   <div style="width:100%;max-width:380px;background:#fff;border-radius:28px;padding:32px 24px;box-shadow:0 24px 64px rgba(0,0,0,.25);">
 
     <div style="text-align:center;margin-bottom:24px;">
-      <div style="font-size:40px;margin-bottom:8px;">💸</div>
+      <div class="auth-logo"><svg class="icon icon-lg"><use href="#icon-wallet"/></svg></div>
       <h1 style="font-size:24px;font-weight:800;color:var(--brand-dark);letter-spacing:-.03em;margin:0;">Préstamos Pro</h1>
       <p style="font-size:14px;color:var(--muted);margin-top:6px;">Gestión inteligente de préstamos</p>
     </div>
@@ -69,12 +96,12 @@
   <header class="topbar">
     <div class="topbar-row">
       <div class="brand">
-        <div class="brand-badge">💸</div>
+        <div class="brand-badge"><svg class="icon"><use href="#icon-wallet"/></svg></div>
         Préstamos Pro
       </div>
       <div class="top-actions">
-        <button class="ghost-btn" onclick="openProfile()">👤</button>
-        <button class="ghost-btn" onclick="openSettings()">⚙️</button>
+        <button class="ghost-btn" onclick="openProfile()" aria-label="Perfil"><svg class="icon"><use href="#icon-user"/></svg></button>
+        <button class="ghost-btn" onclick="openSettings()" aria-label="Configuración"><svg class="icon"><use href="#icon-settings"/></svg></button>
       </div>
     </div>
     <div class="hero-row">
@@ -101,7 +128,7 @@
       <h2 class="sec-title">Préstamos</h2>
       <div class="toolbar">
         <div class="search-box">
-          <span>🔍</span>
+          <span><svg class="icon icon-sm"><use href="#icon-search"/></svg></span>
           <input id="searchLoans" type="search" placeholder="Buscar por cliente…" oninput="renderLoans()">
         </div>
       </div>
@@ -113,7 +140,7 @@
       <div id="paymentsAlert"></div>
       <div class="toolbar">
         <div class="search-box">
-          <span>🔍</span>
+          <span><svg class="icon icon-sm"><use href="#icon-search"/></svg></span>
           <input id="searchPayments" type="search" placeholder="Buscar por cliente o fecha…" oninput="renderPayments()">
         </div>
       </div>
@@ -124,7 +151,7 @@
       <h2 class="sec-title">Clientes</h2>
       <div class="toolbar">
         <div class="search-box">
-          <span>🔍</span>
+          <span><svg class="icon icon-sm"><use href="#icon-search"/></svg></span>
           <input id="searchClients" type="search" placeholder="Buscar por nombre, cédula o teléfono…" oninput="renderClients()">
         </div>
       </div>
@@ -133,13 +160,13 @@
 
   </main>
 
-  <button class="fab" id="fab" style="display:none;" onclick="primaryAction()">+</button>
+  <button class="fab" id="fab" style="display:none;" onclick="primaryAction()" aria-label="Agregar"><svg class="icon icon-lg"><use href="#icon-plus"/></svg></button>
 
   <nav class="bottom-nav">
-    <button class="nav-btn active" data-tab="finanzas"  onclick="goTab('finanzas')"><span class="nav-ico">📊</span>Finanzas</button>
-    <button class="nav-btn"        data-tab="prestamos" onclick="goTab('prestamos')"><span class="nav-ico">💳</span>Préstamos</button>
-    <button class="nav-btn"        data-tab="pagos"     onclick="goTab('pagos')"><span class="nav-ico">💰</span>Pagos</button>
-    <button class="nav-btn"        data-tab="clientes"  onclick="goTab('clientes')"><span class="nav-ico">👥</span>Clientes</button>
+    <button class="nav-btn active" data-tab="finanzas"  onclick="goTab('finanzas')"><span class="nav-ico"><svg class="icon"><use href="#icon-bar-chart"/></svg></span>Finanzas</button>
+    <button class="nav-btn"        data-tab="prestamos" onclick="goTab('prestamos')"><span class="nav-ico"><svg class="icon"><use href="#icon-credit-card"/></svg></span>Préstamos</button>
+    <button class="nav-btn"        data-tab="pagos"     onclick="goTab('pagos')"><span class="nav-ico"><svg class="icon"><use href="#icon-dollar"/></svg></span>Pagos</button>
+    <button class="nav-btn"        data-tab="clientes"  onclick="goTab('clientes')"><span class="nav-ico"><svg class="icon"><use href="#icon-users"/></svg></span>Clientes</button>
   </nav>
 
 </div>
@@ -155,13 +182,13 @@
     <div class="sheet-handle"></div>
     <div class="sheet-head">
       <span class="sheet-title">Mi perfil</span>
-      <button class="close-btn" onclick="closeModal('profileModal')">✕</button>
+      <button class="close-btn" onclick="closeModal('profileModal')"><svg class="icon icon-sm"><use href="#icon-x"/></svg></button>
     </div>
     <p style="font-size:15px;color:var(--muted);margin-bottom:24px;">
       Sesión activa como:<br>
       <strong id="profileEmail" style="color:var(--text);font-size:16px;">—</strong>
     </p>
-    <button class="btn btn-cancel" style="width:100%;" onclick="handleLogout()">🚪 Cerrar sesión</button>
+    <button class="btn btn-cancel" style="width:100%;display:flex;align-items:center;justify-content:center;gap:8px;" onclick="handleLogout()"><svg class="icon icon-sm"><use href="#icon-log-out"/></svg>Cerrar sesión</button>
   </div>
 </div>
 
@@ -171,7 +198,7 @@
     <div class="sheet-handle"></div>
     <div class="sheet-head">
       <span class="sheet-title">Configuración</span>
-      <button class="close-btn" onclick="closeModal('settingsModal')">✕</button>
+      <button class="close-btn" onclick="closeModal('settingsModal')"><svg class="icon icon-sm"><use href="#icon-x"/></svg></button>
     </div>
     <div class="form-group">
       <label for="cfgCapital">Capital inicial (COP)</label>
@@ -191,7 +218,7 @@
     <div class="sheet-handle"></div>
     <div class="sheet-head">
       <span class="sheet-title" id="loanModalTitle">Nuevo préstamo</span>
-      <button class="close-btn" onclick="closeModal('loanModal')">✕</button>
+      <button class="close-btn" onclick="closeModal('loanModal')"><svg class="icon icon-sm"><use href="#icon-x"/></svg></button>
     </div>
     <form onsubmit="saveLoan(event)">
       <input type="hidden" id="loanId">
@@ -261,7 +288,7 @@
     <div class="sheet-handle"></div>
     <div class="sheet-head">
       <span class="sheet-title" id="clientModalTitle">Nuevo cliente</span>
-      <button class="close-btn" onclick="closeModal('clientModal')">✕</button>
+      <button class="close-btn" onclick="closeModal('clientModal')"><svg class="icon icon-sm"><use href="#icon-x"/></svg></button>
     </div>
     <form onsubmit="saveClient(event)">
       <input type="hidden" id="clientId">
@@ -302,7 +329,7 @@
     <div class="sheet-handle"></div>
     <div class="sheet-head">
       <span class="sheet-title">Registrar pago</span>
-      <button class="close-btn" onclick="closeModal('paymentModal')">✕</button>
+      <button class="close-btn" onclick="closeModal('paymentModal')"><svg class="icon icon-sm"><use href="#icon-x"/></svg></button>
     </div>
     <form onsubmit="savePayment(event)">
       <input type="hidden" id="paymentId">
@@ -333,7 +360,7 @@
     <div class="sheet-handle"></div>
     <div class="sheet-head">
       <span class="sheet-title" id="scheduleTitle">Cronograma</span>
-      <button class="close-btn" onclick="closeModal('scheduleModal')">✕</button>
+      <button class="close-btn" onclick="closeModal('scheduleModal')"><svg class="icon icon-sm"><use href="#icon-x"/></svg></button>
     </div>
     <div style="overflow-x:auto;">
       <table class="schedule-table">
