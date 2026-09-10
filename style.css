@@ -266,6 +266,7 @@ button { transition: transform .12s ease, opacity .12s ease, background-color .1
 .chip.semanal   { background: var(--ok-soft);   border-color: var(--ok-border);  color: var(--ok); }
 .chip.quincenal { background: var(--quincenal-soft); border-color: var(--quincenal-border); color: var(--quincenal-text); }
 .chip.mensual   { background: var(--mensual-soft); border-color: var(--mensual-border); color: var(--mensual-text); }
+.chip.renovable { background: var(--mensual-soft); border-color: var(--mensual-border); color: var(--mensual-text); }
 .item-actions { display: flex; gap: 6px; flex-shrink: 0; }
 .icon-btn {
   width: 38px; height: 38px; border-radius: 12px;

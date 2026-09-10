@@ -50,6 +50,7 @@
   <symbol id="icon-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></symbol>
   <symbol id="icon-moon" viewBox="0 0 24 24"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></symbol>
   <symbol id="icon-eye" viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></symbol>
+  <symbol id="icon-check-circle" viewBox="0 0 24 24"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></symbol>
 </svg>
 
 <!-- ══════════════════════════════════════════
@@ -261,6 +262,13 @@
         <button type="button" class="inline-btn" onclick="openQuickClient()">+ Nuevo cliente</button>
       </div>
       <div class="form-group">
+        <label for="loanTipo">Tipo de préstamo</label>
+        <select id="loanTipo" onchange="onLoanTipoChange()">
+          <option value="AMORTIZABLE" selected>Cuotas fijas</option>
+          <option value="RENOVABLE">Solo interés (renovable)</option>
+        </select>
+      </div>
+      <div class="form-group">
         <label for="loanImporte">Capital prestado (COP)</label>
         <input id="loanImporte" class="money-input" type="text" inputmode="numeric" placeholder="0" required oninput="calcLoan()">
       </div>
@@ -269,7 +277,7 @@
           <label for="loanInteres">Interés mensual (%)</label>
           <input id="loanInteres" type="number" step="0.1" min="0" placeholder="0" oninput="calcLoan()">
         </div>
-        <div class="form-group">
+        <div class="form-group" id="cuotasField">
           <label for="loanCuotas">N° cuotas</label>
           <input id="loanCuotas" type="number" min="1" placeholder="0" required oninput="calcLoan()">
         </div>
@@ -283,22 +291,31 @@
           <option value="MENSUAL">Mensual</option>
         </select>
       </div>
-      <div id="loanDesglose" class="loan-desglose" style="display:none;"></div>
-      <div class="form-group" style="margin-top:4px;">
-        <label style="display:flex;align-items:center;gap:8px;text-transform:none;font-size:13px;font-weight:600;color:var(--muted);">
-          <input id="toggleManual" type="checkbox" onchange="onToggleManual()">
-          Ingresar total manualmente
-        </label>
-      </div>
-      <div class="row2">
-        <div class="form-group">
-          <label for="loanImporteTotal">Total a cobrar</label>
-          <input id="loanImporteTotal" class="money-input readonly-field" type="text" inputmode="numeric" readonly>
+      <div id="amortizableFields">
+        <div id="loanDesglose" class="loan-desglose" style="display:none;"></div>
+        <div class="form-group" style="margin-top:4px;">
+          <label style="display:flex;align-items:center;gap:8px;text-transform:none;font-size:13px;font-weight:600;color:var(--muted);">
+            <input id="toggleManual" type="checkbox" onchange="onToggleManual()">
+            Ingresar total manualmente
+          </label>
         </div>
+        <div class="row2">
+          <div class="form-group">
+            <label for="loanImporteTotal">Total a cobrar</label>
+            <input id="loanImporteTotal" class="money-input readonly-field" type="text" inputmode="numeric" readonly>
+          </div>
+          <div class="form-group">
+            <label for="loanCuota">Cuota (redondeada)</label>
+            <input id="loanCuota" class="readonly-field" type="text" readonly>
+            <p class="hint">Múltiplo de $1.000</p>
+          </div>
+        </div>
+      </div>
+      <div id="renovableFields" style="display:none;">
         <div class="form-group">
-          <label for="loanCuota">Cuota (redondeada)</label>
-          <input id="loanCuota" class="readonly-field" type="text" readonly>
-          <p class="hint">Múltiplo de $1.000</p>
+          <label for="loanCuotaInteres">Cuota de interés (cada período)</label>
+          <input id="loanCuotaInteres" class="readonly-field" type="text" readonly>
+          <p class="hint">El capital no se reduce con estos pagos: sigue prestado y se renueva cada período hasta que cierres el préstamo manualmente.</p>
         </div>
       </div>
       <div class="form-actions">

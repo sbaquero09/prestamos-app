@@ -99,8 +99,9 @@ function dueDateForCuota(loan, n) {
   return d.toISOString().slice(0, 10);
 }
 function nextDueDate(loan) {
-  const paid = payments.filter(p => String(p.loan_id) === String(loan.id)).length;
-  return dueDateForCuota(loan, Math.min(paid + 1, Number(loan.cuotas)));
+  const paid = payments.filter(p => String(p.loan_id) === String(loan.id) && p.tipo !== 'CAPITAL').length;
+  const n = loan.tipo === 'RENOVABLE' ? paid + 1 : Math.min(paid + 1, Number(loan.cuotas));
+  return dueDateForCuota(loan, n);
 }
 function allDueDates(loan) {
   return Array.from({ length: Number(loan.cuotas) }, (_, i) => ({
@@ -114,13 +115,23 @@ function calcMeses(cuotas, modalidad) {
 }
 function clientById(id)   { return clients.find(c => String(c.id) === String(id)); }
 function clientName(id)   { return clientById(id)?.nombre || 'Sin cliente'; }
-function loanExpected(l)  { return Number(l.cuota || 0) * Number(l.cuotas || 0); }
+function loanExpected(l)  {
+  if (l.tipo === 'RENOVABLE') return Number(l.importe || 0);
+  return Number(l.cuota || 0) * Number(l.cuotas || 0);
+}
 function loanPaid(loanId) {
   return payments
     .filter(p => String(p.loan_id) === String(loanId))
     .reduce((s, p) => s + Number(p.monto || 0), 0);
 }
-function loanBalance(l)   { return Math.max(0, loanExpected(l) - loanPaid(l.id)); }
+function loanCerrado(l) {
+  return l.tipo === 'RENOVABLE' &&
+    payments.some(p => String(p.loan_id) === String(l.id) && p.tipo === 'CAPITAL');
+}
+function loanBalance(l) {
+  if (l.tipo === 'RENOVABLE') return loanCerrado(l) ? 0 : Number(l.importe || 0);
+  return Math.max(0, loanExpected(l) - loanPaid(l.id));
+}
 function loanStatus(l) {
   if (loanBalance(l) <= 0) return 'completados';
   return daysDiff(nextDueDate(l)) < 0 ? 'vencidos' : 'activos';
@@ -330,17 +341,18 @@ function renderHeader() {
 }
 
 function renderStats() {
-  const cap      = Number(config.capital_inicial||0);
-  const prestado = loans.reduce((s,l) => s + Number(l.importe||0), 0);
-  const esperado = loans.reduce((s,l) => s + loanExpected(l), 0);
-  const pagado   = payments.reduce((s,p) => s + Number(p.monto||0), 0);
+  const cap       = Number(config.capital_inicial||0);
+  const prestado  = loans.reduce((s,l) => s + Number(l.importe||0), 0);
+  const esperado  = loans.reduce((s,l) => s + loanExpected(l), 0);
+  const pagado    = payments.reduce((s,p) => s + Number(p.monto||0), 0);
+  const pendiente = loans.reduce((s,l) => s + loanBalance(l), 0);
   document.getElementById('statsGrid').innerHTML = [
     ['Capital inicial',     cap,                  'full'],
     ['Capital disponible',  cap - prestado + pagado, 'full'],
     ['Total prestado',      prestado,             ''],
     ['Total pagado',        pagado,               ''],
     ['Ganancias esperadas', esperado - prestado,  ''],
-    ['Pendiente cobrar',    esperado - pagado,    ''],
+    ['Pendiente cobrar',    pendiente,            ''],
   ].map(([lbl,val,cls]) => `
     <div class="stat ${cls}">
       <div class="stat-label">${lbl}</div>
@@ -368,18 +380,33 @@ function renderLoans() {
   const wrap = document.getElementById('loanList');
   if (!list.length) { wrap.innerHTML = `<div class="empty">${icon('credit-card')}No hay préstamos.</div>`; return; }
   wrap.innerHTML = list.map(l => {
+    const isRenovable = l.tipo === 'RENOVABLE';
     const next    = nextDueDate(l);
     const diff    = daysDiff(next);
     const balance = loanBalance(l);
-    const paid    = loanPaid(l.id);
-    const total   = loanExpected(l);
-    const pct     = total > 0 ? Math.min(100, Math.round(paid/total*100)) : 0;
     let chip = `<span class="chip ok">Al día</span>`;
     if (balance <= 0)  chip = `<span class="chip">Completado</span>`;
     else if (diff < 0) chip = `<span class="chip danger">Vencido</span>`;
     else if (diff <= 3)chip = `<span class="chip warn">Vence ${next}</span>`;
     const mc   = (l.modalidad||'semanal').toLowerCase();
     const lJson = JSON.stringify(l).replace(/"/g,'&quot;');
+
+    let progressChip, amountLine, balanceLine;
+    if (isRenovable) {
+      const interesPagos = payments.filter(p => String(p.loan_id) === String(l.id) && p.tipo !== 'CAPITAL').length;
+      progressChip = `<span class="chip">${interesPagos} pago${interesPagos!==1?'s':''} de interés</span>`;
+      amountLine   = `${formatCOP(l.importe)} de capital · interés ${formatCOP(l.cuota)}/período`;
+      balanceLine  = balance > 0
+        ? `Capital pendiente ${formatCOP(balance)} · Próx. <strong>${next}</strong>`
+        : `Capital devuelto · préstamo cerrado`;
+    } else {
+      const paid = loanPaid(l.id);
+      const total = loanExpected(l);
+      const pct = total > 0 ? Math.min(100, Math.round(paid/total*100)) : 0;
+      progressChip = `<span class="chip">${pct}% pagado</span>`;
+      amountLine   = `${formatCOP(l.importe)} · cuota ${formatCOP(l.cuota)} × ${l.cuotas}`;
+      balanceLine  = `Saldo ${formatCOP(balance)} · Próx. <strong>${next}</strong>`;
+    }
     return `
     <div class="list-item">
       <div class="list-top">
@@ -387,17 +414,16 @@ function renderLoans() {
           <div class="item-title">${clientName(l.cliente_id)}</div>
           <div class="item-meta">${l.fecha}</div>
           <div class="chips">
-            <span class="chip ${mc}">${l.modalidad}</span>${chip}
-            <span class="chip">${pct}% pagado</span>
+            <span class="chip ${mc}">${l.modalidad}</span>${isRenovable ? '<span class="chip renovable">Renovable</span>' : ''}${chip}
+            ${progressChip}
           </div>
-          <div class="item-amount">${formatCOP(l.importe)} · cuota ${formatCOP(l.cuota)} × ${l.cuotas}</div>
-          <div style="font-size:13px;color:var(--muted);margin-top:4px">
-            Saldo ${formatCOP(balance)} · Próx. <strong>${next}</strong>
-          </div>
+          <div class="item-amount">${amountLine}</div>
+          <div style="font-size:13px;color:var(--muted);margin-top:4px">${balanceLine}</div>
         </div>
         <div class="item-actions">
           <button class="icon-btn" title="Cronograma"  onclick="openSchedule(${l.id})">${icon('calendar')}</button>
           <button class="icon-btn" title="Pago"        onclick="openPaymentForLoan(${l.id})">${icon('dollar')}</button>
+          ${isRenovable && balance > 0 ? `<button class="icon-btn" title="Cerrar préstamo" onclick="closeLoan(${l.id})">${icon('check-circle')}</button>` : ''}
           <button class="icon-btn" title="Editar"      onclick="editLoan('${lJson}')">${icon('edit')}</button>
           <button class="icon-btn danger" title="Eliminar" onclick="deleteLoan(${l.id})">${icon('trash')}</button>
         </div>
@@ -502,6 +528,7 @@ function openLoanModal(loan) {
   sel.innerHTML = '<option value="">Seleccionar cliente</option>' +
     clients.map(c => `<option value="${c.id}">${c.nombre}</option>`).join('');
   if (loan?.cliente_id) sel.value = String(loan.cliente_id);
+  document.getElementById('loanTipo').value      = loan?.tipo || 'AMORTIZABLE';
   document.getElementById('loanImporte').value   = loan?.importe   ? Number(loan.importe).toLocaleString('es-CO') : '';
   document.getElementById('loanInteres').value   = loan?.interes   ?? '';
   document.getElementById('loanModalidad').value = loan?.modalidad || 'SEMANAL';
@@ -510,10 +537,19 @@ function openLoanModal(loan) {
   toggle.checked = false;
   const tf = document.getElementById('loanImporteTotal');
   tf.setAttribute('readonly', true); tf.classList.add('readonly-field');
-  calcLoan(loan);
+  onLoanTipoChange(loan);
   openModal('loanModal');
 }
 function editLoan(loan) { openLoanModal(loan); }
+
+function onLoanTipoChange(loan) {
+  const tipo = document.getElementById('loanTipo').value;
+  document.getElementById('amortizableFields').style.display = tipo === 'AMORTIZABLE' ? '' : 'none';
+  document.getElementById('renovableFields').style.display   = tipo === 'RENOVABLE'   ? '' : 'none';
+  document.getElementById('cuotasField').style.display       = tipo === 'AMORTIZABLE' ? '' : 'none';
+  document.getElementById('loanCuotas').required = tipo === 'AMORTIZABLE';
+  calcLoan(loan);
+}
 
 function onToggleManual() {
   const manual = document.getElementById('toggleManual').checked;
@@ -530,8 +566,15 @@ function onToggleManual() {
 }
 
 function calcLoan(loan) {
-  const importe   = parseCOP(document.getElementById('loanImporte').value)  || Number(loan?.importe  || 0);
-  const interes   = Number(document.getElementById('loanInteres').value)    ?? Number(loan?.interes  ?? 0);
+  const tipo    = document.getElementById('loanTipo')?.value || loan?.tipo || 'AMORTIZABLE';
+  const importe = parseCOP(document.getElementById('loanImporte').value) || Number(loan?.importe || 0);
+  const interes = Number(document.getElementById('loanInteres').value)   || Number(loan?.interes || 0);
+  if (tipo === 'RENOVABLE') {
+    const cuotaInt = importe > 0 ? redondear1000(importe * interes / 100) : 0;
+    const ci = document.getElementById('loanCuotaInteres');
+    if (ci) ci.value = cuotaInt > 0 ? cuotaInt.toLocaleString('es-CO') : '';
+    return;
+  }
   const cuotas    = Number(document.getElementById('loanCuotas').value)     || Number(loan?.cuotas   || 0);
   const modalidad = document.getElementById('loanModalidad').value          || loan?.modalidad || 'SEMANAL';
   const modoManual = document.getElementById('toggleManual')?.checked;
@@ -558,25 +601,30 @@ function calcLoan(loan) {
 
 async function saveLoan(e) {
   e.preventDefault();
-  const id         = document.getElementById('loanId').value;
-  const importe    = parseCOP(document.getElementById('loanImporte').value);
-  const interes    = Number(document.getElementById('loanInteres').value);
-  const cuotas     = Number(document.getElementById('loanCuotas').value);
-  const modalidad  = document.getElementById('loanModalidad').value;
-  const modoManual = document.getElementById('toggleManual')?.checked;
-  const meses      = cuotas > 0 ? calcMeses(cuotas, modalidad) : 0;
-  const importeTotal = modoManual
-    ? parseCOP(document.getElementById('loanImporteTotal').value)
-    : importe + (importe * interes / 100 * meses);
-  const cuota = cuotas > 0 ? redondear1000(importeTotal / cuotas) : 0;
-  const payload = {
-    fecha:         document.getElementById('loanFecha').value,
-    cliente_id:    Number(document.getElementById('loanCliente').value),
-    importe, interes, cuotas,
-    importe_total: importeTotal,
-    cuota, modalidad,
-    user_id:       currentUser.id,
+  const id        = document.getElementById('loanId').value;
+  const tipo      = document.getElementById('loanTipo').value;
+  const importe   = parseCOP(document.getElementById('loanImporte').value);
+  const interes   = Number(document.getElementById('loanInteres').value);
+  const modalidad = document.getElementById('loanModalidad').value;
+  const base = {
+    fecha:      document.getElementById('loanFecha').value,
+    cliente_id: Number(document.getElementById('loanCliente').value),
+    importe, interes, modalidad, tipo,
+    user_id:    currentUser.id,
   };
+  let payload;
+  if (tipo === 'RENOVABLE') {
+    payload = { ...base, cuotas: null, importe_total: null, cuota: redondear1000(importe * interes / 100) };
+  } else {
+    const cuotas     = Number(document.getElementById('loanCuotas').value);
+    const modoManual = document.getElementById('toggleManual')?.checked;
+    const meses      = cuotas > 0 ? calcMeses(cuotas, modalidad) : 0;
+    const importeTotal = modoManual
+      ? parseCOP(document.getElementById('loanImporteTotal').value)
+      : importe + (importe * interes / 100 * meses);
+    const cuota = cuotas > 0 ? redondear1000(importeTotal / cuotas) : 0;
+    payload = { ...base, cuotas, importe_total: importeTotal, cuota };
+  }
   const { error } = id
     ? await sb.from('prestamos').update(payload).eq('id', id)
     : await sb.from('prestamos').insert(payload);
@@ -591,6 +639,17 @@ async function deleteLoan(id) {
   const { error } = await sb.from('prestamos').delete().eq('id', id);
   if (error) { showToast('Error al eliminar.', 'danger'); return; }
   await loadData(); showToast('Préstamo eliminado.', 'warn');
+}
+async function closeLoan(id) {
+  const l = loans.find(x => String(x.id) === String(id));
+  if (!l) return;
+  if (!confirm(`¿${clientName(l.cliente_id)} devolvió el capital de ${formatCOP(l.importe)}? Esto cerrará el préstamo.`)) return;
+  const { error } = await sb.from('pagos').insert({
+    loan_id: l.id, fecha: today(), monto: l.importe, tipo: 'CAPITAL', user_id: currentUser.id,
+  });
+  if (error) { showToast('Error: ' + error.message, 'danger'); return; }
+  await loadData();
+  showToast('Préstamo cerrado ✓');
 }
 function openQuickClient() { document.getElementById('clientFromLoan').value = 1; openClientModal(); }
 function openPaymentForLoan(id) { openPaymentModal(id); }
@@ -726,7 +785,7 @@ function openPaymentModal(preselectedLoanId) {
   document.getElementById('paymentId').value = '';
   const sel = document.getElementById('paymentLoanId');
   sel.innerHTML = loans.map(l =>
-    `<option value="${l.id}">${clientName(l.cliente_id)} — ${formatCOP(l.cuota)} × ${l.cuotas}</option>`
+    `<option value="${l.id}">${clientName(l.cliente_id)} — ${formatCOP(l.cuota)}${l.tipo === 'RENOVABLE' ? ' (interés)' : ' × ' + l.cuotas}</option>`
   ).join('');
   if (preselectedLoanId) sel.value = String(preselectedLoanId);
   document.getElementById('paymentFecha').value = today();
@@ -740,15 +799,16 @@ function fillPaymentInfo() {
   const box  = document.getElementById('loanInfoBox');
   if (!loan) { box.innerHTML = ''; return; }
   const balance   = loanBalance(loan);
-  const paidCount = payments.filter(p => String(p.loan_id) === String(loan.id)).length;
+  const paidCount = payments.filter(p => String(p.loan_id) === String(loan.id) && p.tipo !== 'CAPITAL').length;
   const nextDate  = nextDueDate(loan);
   const diff      = daysDiff(nextDate);
   const label     = diff === 0 ? 'Hoy' : diff < 0 ? `Hace ${Math.abs(diff)}d` : `En ${diff}d`;
   const urg       = diff < 0 ? 'danger' : diff <= 3 ? 'warn' : 'ok';
+  const pagadasLabel = loan.tipo === 'RENOVABLE' ? `${paidCount} pagos de interés` : `${paidCount} / ${loan.cuotas}`;
   box.innerHTML = `
     <div class="loan-info-box">
       <div class="info-row"><div class="info-label">Cuota</div><div class="info-value">${formatCOP(loan.cuota)}</div></div>
-      <div class="info-row"><div class="info-label">Pagadas</div><div class="info-value">${paidCount} / ${loan.cuotas}</div></div>
+      <div class="info-row"><div class="info-label">Pagadas</div><div class="info-value">${pagadasLabel}</div></div>
       <div class="info-row"><div class="info-label">Saldo</div><div class="info-value">${formatCOP(balance)}</div></div>
       <div class="info-row">
         <div class="info-label">Próx. venc.</div>
@@ -763,11 +823,14 @@ function fillPaymentInfo() {
 
 async function savePayment(e) {
   e.preventDefault();
-  const id      = document.getElementById('paymentId').value;
+  const id     = document.getElementById('paymentId').value;
+  const loanId = Number(document.getElementById('paymentLoanId').value);
+  const loan   = loans.find(l => String(l.id) === String(loanId));
   const payload = {
-    loan_id: Number(document.getElementById('paymentLoanId').value),
+    loan_id: loanId,
     fecha:   document.getElementById('paymentFecha').value,
     monto:   parseCOP(document.getElementById('paymentMonto').value),
+    tipo:    loan?.tipo === 'RENOVABLE' ? 'INTERES' : 'CUOTA',
     user_id: currentUser.id,
   };
   const { error } = id
@@ -790,6 +853,31 @@ function openSchedule(loanId) {
   const loan = loans.find(l => String(l.id) === String(loanId));
   if (!loan) return;
   document.getElementById('scheduleTitle').textContent = `Cronograma — ${clientName(loan.cliente_id)}`;
+
+  if (loan.tipo === 'RENOVABLE') {
+    const loanPayments = payments
+      .filter(p => String(p.loan_id) === String(loan.id))
+      .slice()
+      .sort((a, b) => String(a.fecha).localeCompare(String(b.fecha)));
+    let rows = loanPayments.map((p, i) => {
+      const label = p.tipo === 'CAPITAL' ? 'Capital devuelto' : 'Interés pagado';
+      return `<tr class="sched-paid"><td>${i+1}</td><td>${p.fecha}</td><td>${formatCOP(p.monto)}</td><td><span class="chip ok" style="font-size:11px">${label}</span></td></tr>`;
+    }).join('');
+    if (!loanCerrado(loan)) {
+      const next = nextDueDate(loan);
+      const diff = daysDiff(next);
+      let cls = '', badge = `<span class="chip" style="font-size:11px">Próximo</span>`;
+      if (diff < 0)       { cls = 'sched-late';  badge = `<span class="chip danger" style="font-size:11px">Venció ${Math.abs(diff)}d</span>`; }
+      else if (diff === 0){ cls = 'sched-today'; badge = `<span class="chip warn" style="font-size:11px">Hoy</span>`; }
+      else if (diff <= 3) { cls = 'sched-soon';  badge = `<span class="chip warn" style="font-size:11px">En ${diff}d</span>`; }
+      rows += `<tr class="${cls}"><td>—</td><td>${next}</td><td>${formatCOP(loan.cuota)}</td><td>${badge}</td></tr>`;
+    }
+    document.getElementById('scheduleTable').innerHTML = rows ||
+      `<tr><td colspan="4" style="text-align:center;color:var(--muted)">Sin pagos registrados todavía.</td></tr>`;
+    openModal('scheduleModal');
+    return;
+  }
+
   document.getElementById('scheduleTable').innerHTML = allDueDates(loan).map(d => {
     const diff = daysDiff(d.fecha);
     let cls = '', badge = '';
